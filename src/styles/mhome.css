@@ -1,0 +1,208 @@
+@import url('https://fonts.googleapis.com/css2?family=Irish+Grover&display=swap');
+
+/* MAIN PAGE */
+.mhome-container {
+  background: linear-gradient(to bottom, #D9ABBC 20%, #4F1112 100%);
+  width: 100vw;
+  min-height: 100vh; /* allows scroll if needed */
+  overflow-y: auto;  /* vertical scrolling */
+  padding: 7rem 0 2rem 0;
+  display: flex;
+  flex-direction: column; /* stack slider and search bar vertically */
+  align-items: center;
+  position: relative; /* arrows absolute relative to this */
+}
+
+/* HEADER BOX */
+.header-box {
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
+  height: 70vh;  /* slider box height fixed */
+  overflow: hidden; /* keeps slides clipped */
+  margin-bottom: 2rem; /* space below slider for search bar */
+}
+
+/* SLIDER WRAPPER */
+.slider-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* EACH SLIDE */
+.slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;    
+  height: 100%;
+  border-radius: 35px;
+  padding: 3rem 4rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: white;
+  transition: transform 0.35s ease-in-out;
+}
+
+/* TEXT AREA */
+.slide-text {
+  width: 55%;
+}
+
+.slide-title {
+  font-family: "Irish Grover", cursive;
+  font-size: 2.8rem;
+  margin-bottom: 1rem;
+}
+
+.slide-desc {
+  color: #f2f2f2;
+  font-size: 1.1rem;
+  line-height: 1.6;
+  margin-bottom: 2rem;
+}
+
+/* INDICATORS */
+.indicator-row {
+  display: flex;
+  gap: 0.7rem;
+}
+
+.rect {
+  width: 40px;
+  height: 12px;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.3);
+  transition: 0.25s;
+}
+
+.rect.active {
+  background-color: white;
+}
+
+/* IMAGE SECTION */
+.slide-image {
+  object-fit: contain;
+}
+
+/* SNOOPY SLIDE */
+.img-snoopy {
+  transform: translate(80px, 50px);
+  width: 40%;
+}
+
+/* SLIDE 2 IMAGE */
+.img-two {
+  transform: translate(133px, 20px);
+  width: 45%;
+}
+
+/* SLIDE 3 IMAGE */
+.img-three {
+  transform: translate(140px, 50px);
+  width: 80%;
+  height: auto;
+}
+
+/* SEARCH BAR */
+.search-container {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.search-bar {
+  width: 60%;
+  padding: 0.8rem 1rem;
+  border-radius: 20px;
+  border: none;
+  font-size: 1rem;
+  outline: none;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+  transition: 0.2s;
+}
+
+.search-bar:focus {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+/* ARROWS */
+.arrow {
+  position:relative;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 3.2rem;
+  color: white;
+  background: none;
+  border: none;
+  cursor: pointer;
+  z-index: 60; /* above slides */
+  opacity: 0.7;
+  transition: 0.2s;
+}
+
+.arrow:hover {
+  opacity: 1;
+}
+
+.left-arrow {
+  left: 43rem;
+  top :-19rem;
+}
+
+.right-arrow {
+  right: 43rem;
+  top :-23.1rem;
+}
+
+.search-text {
+  width: 60%;
+  padding: 0.8rem 1rem 0.8rem 3rem;
+  border-radius: 20px;
+  border: none;
+  font-size: 1rem;
+  outline: none;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+  
+
+}
+.search-icon{
+  position: absolute;
+  right: 96%;
+  font-size: 1.8rem;
+  color: #888;
+}
+
+.search-container {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.search-wrapper {
+  position: relative;
+  width: 60%;
+}
+
+.search-bar {
+  width: 100%;
+  padding: 0.8rem 2.5rem 0.8rem 2.9rem; /* extra right padding for icon */
+  border-radius: 20px;
+  border: none;
+  font-size: 1rem;
+  outline: none;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+}
+
+.mic-icon {
+  position: absolute;
+  right: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  color: black; /* change color if needed */
+}

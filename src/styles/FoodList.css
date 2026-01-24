@@ -1,0 +1,21 @@
+.food-container {
+  display:grid;
+  grid-template-columns: repeat(4, 1fr); /* 4 cards per row */
+  gap:70px; /* space between cards */
+  margin-top: 150px; /* optional spacing from above elements */
+}
+
+.card {
+  background-color: #e0bdbd; /* or whatever you like */
+  border-radius: 8px;
+  overflow: hidden;
+  text-align: center;
+  padding: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15); 
+}
+.card img {
+  width: 50%;
+  min-height: auto;
+  object-fit:cover;
+}
+

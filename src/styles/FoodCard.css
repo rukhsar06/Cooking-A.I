@@ -1,0 +1,37 @@
+.foodLink{
+ text-decoration: none; /* remove underline */
+  color: inherit; /* use normal text color */
+  display: block; 
+
+}
+
+.card-wrapper {
+  position: relative;
+}
+
+.card-title-wrapper {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.three-dots {
+  cursor: pointer;
+  font-size: 20px;
+}
+
+.menu {
+  position: absolute;
+  right: 70px;
+  bottom: -22px;
+  background: white;
+  padding: 10px;
+  border-radius: 8px;
+  box-shadow: 0px 2px 10px rgba(0,0,0,0.2);
+  z-index: 20;
+}
+
+.menu p {
+  margin: 5px 0;
+  cursor: pointer;
+}
