@@ -1,53 +1,111 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import "../styles/login.css";
 import cherry from "../photos/cherry.jpeg";
-import { Link } from 'react-router-dom';
+import { useNavigate, Link } from "react-router-dom";
 
-function PasswordInput({ className, placeholder }) {
+function PasswordInput({ value, onChange, placeholder }) {
   const [visible, setVisible] = useState(false);
 
   return (
     <div className="password-wrapper">
       <input
-        type={visible ? 'text' : 'password'}
-        className={className}
+        type={visible ? "text" : "password"}
+        className="password"
         placeholder={placeholder}
+        value={value}
+        onChange={onChange}
       />
       <button
         type="button"
         onClick={() => setVisible(!visible)}
         className="eye-button"
-        aria-label={visible ? 'Hide password' : 'Show password'}
       >
-        {visible ? '🙈' : '👁️'}
+        {visible ? "🙈" : "👁️"}
       </button>
     </div>
   );
 }
 
 function LoginForm() {
+  const navigate = useNavigate();
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async () => {
+    setError("");
+    setLoading(true);
+
+    try {
+      const res = await fetch("http://localhost:8080/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!res.ok) {
+        setError("Invalid email or password");
+        setLoading(false);
+        return;
+      }
+
+      const data = await res.json();
+
+      // 🔥 STORE FULL USER OBJECT (THIS WAS MISSING BEFORE)
+      const user = {
+        id: data.id,
+        username: data.username,
+        email: data.email,
+        token: data.token,
+        avatar: "/avatars/default.png", // optional
+      };
+
+      localStorage.setItem("user", JSON.stringify(user));
+
+      console.log("LOGGED IN USER:", user);
+
+      navigate("/Mhome");
+    } catch (err) {
+      console.error("Login error:", err);
+      setError("Server not responding");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="body">
       <div className="login-wrapper">
         <div className="login-container">
-          <h1 className="title">COOKING A.I ASSISTENT</h1>
+          <h1 className="title">COOKING A.I ASSISTANT</h1>
 
-          <input type="text" className="email" placeholder="Enter Your Email" />
-
-          {/* Password Inputs with proper className passing */}
-          <PasswordInput 
-            placeholder="  Enter Your Password" 
-            className="password"
+          <input
+            type="email"
+            className="email"
+            placeholder="Enter Your Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
-          <Link className = "mhome" to="/Mhome">
-          <button className="btn">Log in</button>
-           
 
-                {/* here we will put the link so that once logged in it will redirect to home page */}
-         </Link>
-         <p className = 'reg-line'>Don't have an account ?
-                    <Link className = 'reg' to="/reg">Register</Link>
-        </p>    {/*path for the reg */}
+          <PasswordInput
+            placeholder="Enter Your Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+
+          {error && <p className="error">{error}</p>}
+
+          <button className="btn" onClick={handleLogin} disabled={loading}>
+            {loading ? "Logging in..." : "Log in"}
+          </button>
+
+          <Link to="/reg" className="reg">
+            <p className="login-line">Don't have an account? Register</p>
+          </Link>
         </div>
 
         <div className="photo-wrapper">

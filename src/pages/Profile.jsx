@@ -1,56 +1,81 @@
 import "../styles/Profile.css";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Wonwoo from "../photos/Wonwoo.jpeg";
 
-import pancake from "../photos/pancake.jpeg";
-import gyoza from "../photos/gyoza.jpeg";
-import burger from "../photos/burger.jpeg";
-import sushiR from "../photos/sushiR.jpeg";
-import tanghulu from "../photos/tanghulu.jpeg";
-import chickenK from "../photos/chickenK.jpeg";
-
 export default function Profile() {
   const navigate = useNavigate();
-
   const fileRef = useRef(null);
 
-  const storedUser = JSON.parse(localStorage.getItem("user")) || {};
+  const storedUser = JSON.parse(localStorage.getItem("user")) || null;
   const [user, setUser] = useState(storedUser);
 
-  const historyImages = [pancake, gyoza, burger, sushiR, tanghulu, chickenK];
+  // ✅ BACKEND LIKES + HISTORY (Pinterest mode)
+  const [likedList, setLikedList] = useState([]);
+  const [historyList, setHistoryList] = useState([]);
 
-  const likedList = JSON.parse(localStorage.getItem("likedRecipes")) || [];
+  // show max images in collage
   const likedImages = likedList.slice(0, 4);
+  const historyImages = historyList.slice(0, 6);
 
-  // 🔥 when user selects a new image
+  useEffect(() => {
+    if (!user?.token) {
+      setLikedList([]);
+      setHistoryList([]);
+      return;
+    }
+
+    // likes
+    fetch("http://localhost:8080/api/likes", {
+      headers: { Authorization: `Bearer ${user.token}` },
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setLikedList(data || []))
+      .catch(() => setLikedList([]));
+
+    // history
+    fetch("http://localhost:8080/api/history", {
+      headers: { Authorization: `Bearer ${user.token}` },
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setHistoryList(data || []))
+      .catch(() => setHistoryList([]));
+  }, [user?.token]);
+
   const handleAvatarChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // optional: only allow images
     if (!file.type.startsWith("image/")) {
       alert("Please select an image file 😭");
       return;
     }
 
     const reader = new FileReader();
-
     reader.onload = () => {
       const updatedUser = { ...user, avatar: reader.result };
-
       setUser(updatedUser);
       localStorage.setItem("user", JSON.stringify(updatedUser));
     };
-
     reader.readAsDataURL(file);
   };
+
+  // if no user logged in
+  if (!user) {
+    return (
+      <div className="profile">
+        <div className="profile-container">
+          <img src={Wonwoo} className="p-avatar" alt="profile" />
+          <p className="p-name">Guest</p>
+          <p style={{ marginTop: "10px" }}>Login to see your profile stuff.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="profile">
       <div className="profile-container">
-        
-        {/* hidden file input */}
         <input
           type="file"
           accept="image/*"
@@ -59,7 +84,6 @@ export default function Profile() {
           onChange={handleAvatarChange}
         />
 
-        {/* click avatar to open files */}
         <img
           src={user?.avatar || Wonwoo}
           className="p-avatar"
@@ -72,25 +96,41 @@ export default function Profile() {
           title="Click to change profile picture"
         />
 
-        <p className="p-name">{user?.name}</p>
+        <p className="p-name">{user?.username}</p>
       </div>
 
+      {/* ✅ HISTORY (backend) */}
       <h2 className="his-p">Your History</h2>
       <div className="history-collage" onClick={() => navigate("/history")}>
-        {historyImages.map((img, index) => (
-          <img key={index} src={img} alt="history" className="collage-img" />
-        ))}
+        {historyImages.length === 0 ? (
+          <p className="no-liked">No history yet</p>
+        ) : (
+          historyImages.map((item) => (
+            <img
+              key={item.id}
+              src={item.imageUrl || Wonwoo}
+              alt={item.title || "history"}
+              className="collage-img"
+            />
+          ))
+        )}
       </div>
 
+      {/* ✅ LIKED (backend) */}
       <h2 className="like-p">Your Liked</h2>
       <div className="liked-collage" onClick={() => navigate("/liked")}>
-        {likedImages.length === 0 && (
+        {likedImages.length === 0 ? (
           <p className="no-liked">No liked recipes yet</p>
+        ) : (
+          likedImages.map((item) => (
+            <img
+              key={item.id}
+              src={item.imageUrl || Wonwoo}
+              alt={item.title || "liked"}
+              className="collage-img"
+            />
+          ))
         )}
-
-        {likedImages.map((item, index) => (
-          <img key={index} src={item.img} alt="liked" className="collage-img" />
-        ))}
       </div>
     </div>
   );

@@ -2,54 +2,72 @@ import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
 import "../styles/FoodCard.css";
 
-export default function FoodCard({ id, title, img }) {
+const FALLBACK_IMG =
+  "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=800&q=80";
+
+export default function FoodCard({
+  id,
+  title,
+  imageUrl,
+  likes = 0,
+  likedByMe = false,
+}) {
   const navigate = useNavigate();
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef(null);
 
-  // LOAD LIKE FROM LOCAL STORAGE
-  const [liked, setLiked] = useState(() => {
-    const saved = localStorage.getItem(`liked-${id}`);
-    return saved ? JSON.parse(saved) : false;
-  });
+  // backend-driven state
+  const [liked, setLiked] = useState(!!likedByMe);
+  const [likesCount, setLikesCount] = useState(likes);
 
-  // SAVE LIKE TO LOCAL STORAGE
- const handleLikeClick = (e) => {
-  e.preventDefault();
+  // keep state in sync with parent updates
+  useEffect(() => setLiked(!!likedByMe), [likedByMe]);
+  useEffect(() => setLikesCount(likes ?? 0), [likes]);
 
-  const newVal = !liked;
-  setLiked(newVal);
+  const handleLikeClick = async (e) => {
+    e.preventDefault();
 
-  // save boolean
-  localStorage.setItem(`liked-${id}`, JSON.stringify(newVal));
+    const user = JSON.parse(localStorage.getItem("user"));
+    const token = user?.token;
 
-  // full liked list
-  let likedList = JSON.parse(localStorage.getItem("likedRecipes")) || [];
-
-  if (newVal) {
-    // If liked, add recipe
-    if (!likedList.some((r) => r.id === id)) {
-      likedList.push({ id, title, img });
+    if (!token) {
+      navigate("/log");
+      return;
     }
-  } else {
-    // If unliked, remove recipe
-    likedList = likedList.filter((r) => r.id !== id);
-  }
 
-  localStorage.setItem("likedRecipes", JSON.stringify(likedList));
+    try {
+      const res = await fetch(`http://localhost:8080/api/likes/${id}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-  setShowMenu(false);
-};
+      if (res.status === 401) {
+        navigate("/log");
+        return;
+      }
 
+      if (!res.ok) {
+        console.error("Like failed:", res.status);
+        return;
+      }
 
-  // GO TO HISTORY
+      const data = await res.json();
+      setLiked(!!data.liked);
+      setLikesCount(data.likes ?? likesCount);
+      setShowMenu(false);
+    } catch (err) {
+      console.error("Like error:", err);
+    }
+  };
+
   const handleHistoryClick = (e) => {
     e.preventDefault();
     navigate("/history");
-    setShowMenu(false); // close menu after click
+    setShowMenu(false);
   };
 
-  // CLICK OUTSIDE TO CLOSE MENU
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -57,26 +75,27 @@ export default function FoodCard({ id, title, img }) {
       }
     };
 
-    if (showMenu) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    if (showMenu) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showMenu]);
 
   return (
     <div className="card-wrapper" ref={menuRef}>
-      {/* MAIN LINK TO RECIPE PAGE */}
-      <Link to={`/recipe/${title}`} className="foodLink">
+      {/* ✅ ID-based routing */}
+      <Link to={`/recipe/${id}`} className="foodLink">
         <div className="card">
-          <img src={img} alt={title} />
+          <img
+            src={imageUrl || FALLBACK_IMG}
+            alt={title}
+            loading="lazy"
+            onError={(e) => {
+              e.currentTarget.src = FALLBACK_IMG;
+            }}
+          />
 
           <div className="card-title-wrapper">
             <p>{title}</p>
 
-            {/* THREE DOTS */}
             <span
               className="three-dots"
               onClick={(e) => {
@@ -90,16 +109,13 @@ export default function FoodCard({ id, title, img }) {
         </div>
       </Link>
 
-      {/* DROPDOWN MENU */}
       {showMenu && (
         <div className="menu">
           <p onClick={handleLikeClick}>
-            {liked ? "❤️" : "♡"} Like
+            {liked ? "❤️" : "♡"} Like{" "}
+            <span style={{ marginLeft: 6 }}>{likesCount}</span>
           </p>
-
-          <p onClick={handleHistoryClick}>
-            📜 History
-          </p>
+          <p onClick={handleHistoryClick}>📜 History</p>
         </div>
       )}
     </div>

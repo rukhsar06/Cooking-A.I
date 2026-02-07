@@ -1,61 +1,83 @@
 .profile {
   background: linear-gradient(to bottom, #D9ABBC 20%, #4F1112 100%);
   width: 100vw;
-  min-height: 100vh; /* allows scroll if needed */
-  overflow-y: auto;  /* vertical scrolling */
-  padding: 4rem 0 2rem 0;
+  min-height: 100vh;
+  padding: 6rem 0 2rem 0;
   display: flex;
-  flex-direction: column; 
+  flex-direction: column;
   align-items: center;
-  position: relative; 
 }
 
-.p-avatar{
-  height: 60px;
-  width: 60px;
+/* TOP USER AREA */
+.profile-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 40px;
+}
+
+.p-avatar {
+  height: 70px;
+  width: 70px;
   border-radius: 50%;
-  object-fit: cover;   
-  object-position: center; /* Centers your face */
-  margin-left: 40rem;
-  margin-top:6rem;
+  object-fit: cover;
+  object-position: center;
   cursor: pointer;
-   transition: opacity 0.2s ease;
-   background-color: #d3d3d3;
+  transition: opacity 0.2s ease;
+  background-color: #d3d3d3;
 }
 
 .p-avatar:hover {
-  opacity: 0.7; /* fades when hovered */
+  opacity: 0.7;
 }
 
-.p-name{
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: white;
-    margin-left: 45rem;
-    margin-top:-3.3rem;
-    font-family: Irish Grover;
+.p-name {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: white;
+  margin: 0;
+  font-family: arial;
 }
 
-.p-change-container {
-    position: absolute;
-    top: 15rem;
-    right: 22rem;
-    background: white;
-    padding: 0.7rem 1rem;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: bold;
-    z-index: 10px;
+/* ✅ BOTH SECTIONS IN ONE ROW */
+.profile-sections {
+  width: min(1100px, 90vw);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 60px;
+  align-items: start;
 }
 
-.history-collage {
+/* EACH SECTION */
+.profile-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* TITLES */
+.his-p,
+.like-p {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: black;
+  margin: 0;
+  margin-top:2rem;
+}
+
+/* COLLAGES */
+.history-collage,
+.liked-collage {
   display: grid;
   grid-template-columns: repeat(3, 80px);
-  grid-gap: 8px;
-  margin-top: 2rem;
-  cursor: pointer;
-  margin-right: 76rem; /* aligns with your layout */
+  gap: 14px;
+  padding: 40px;
+  border-radius: 10px;
   background-color: white;
+  cursor: pointer;
+  width: fit-content;
+  margin-top: 1rem;
 }
 
 .collage-img {
@@ -70,29 +92,9 @@
   opacity: 0.8;
 }
 
-.his-p{
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: black;
-    margin-top:4rem;
-    margin-right:78rem;
-}
-
-.like-p{
-   font-size: 1.5rem;
-    font-weight: bold;
-    color: black;
-    margin-top:-15rem;
-    margin-left:78rem;
-
-}
-
-.liked-collage {
-  display: grid;
-  grid-template-columns: repeat(3, 80px);
-  grid-gap: 8px;
-  margin-top: 2rem;
-  cursor: pointer;
-  margin-left: 76rem; /* aligns with your layout */
-  background-color: white;
+/* EMPTY MESSAGE */
+.no-liked {
+  font-weight: bold;
+  padding: 10px;
+  margin: 0;
 }

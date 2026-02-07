@@ -8,6 +8,7 @@ import LoginForm from './component/LoginForm';
 import MHome from './component/MHome..jsx';
 import Profile from './pages/Profile';
 import Liked from './pages/liked.jsx';
+import RecipeDetail from './pages/RecipeDetail';
 
 function App() {
   return (
@@ -23,6 +24,8 @@ function App() {
           <Route path ="/Mhome" element ={<MHome/>} />
           <Route path ="/profile" element ={<Profile/>} />
           <Route path ="/liked" element ={<Liked/>} />
+          <Route path="/recipe/:id" element={<RecipeDetail />} />
+
         </Routes>
       </div>
     </Router>

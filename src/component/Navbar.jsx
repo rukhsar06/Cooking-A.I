@@ -34,6 +34,8 @@ function Navbar() {
   else if (path === "/profile") extraClass = "nav-profile";
   else if (path === "/history") extraClass = "nav-history";
   else if (path === "/liked") extraClass = "nav-liked";
+else if (path.startsWith("/recipe/")) extraClass = "nav-recipe-detail";
+
 
   return (
     <div className={`navbar ${extraClass}`}>
@@ -58,6 +60,19 @@ function Navbar() {
               {/* DROPDOWN */}
               {menuOpen && (
                 <div className="profile-menu">
+
+                   {/* USER HEADER */}
+                  <div className="profile-menu-header">
+                  <img
+                   src={user?.avatar || Wonwoo}
+                   alt="profile"
+                   className="menu-avatar"
+                   />
+                <p className="menu-username">{user?.username}</p>
+                  </div>
+
+                  <div className="menu-divider"></div>
+
                   <Link to="/Mhome" className="menu-item" onClick={closeMenu}>
                     Let's Cook
                   </Link>
@@ -87,6 +102,7 @@ function Navbar() {
           <a className="nav-link" href="#dev">About Me</a>
           <a className="nav-link" href="#why">Why I Started</a>
           <a className="nav-link" href="#highlights">Highlights</a>
+          <Link className="nav-link" to="/Mhome">Let's Cook</Link>
         </div>
 
       </header>

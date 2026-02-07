@@ -1,17 +1,41 @@
-.history-header{
+.history-page {
+  min-height: 100vh;
+  width: 100%;
   background: linear-gradient(to bottom, #D9ABBC 20%, #4F1112 100%);
-  width: 100vw;
-  min-height: 100vh; 
-  padding: 6rem 0 2rem 0;
-  overflow-y: auto;  
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  position: relative; 
 }
 
-.p-h{
-     margin-right:76rem;
-     font-size: 40px;
-     margin-top:3rem;
+/* Header should NOT be 100vh */
+.history-header {
+  width: 100%;
+  padding: 6rem 0 1rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* Title: stop using margin-right: 76rem 💀 */
+.p-h {
+  font-size: 40px;
+  margin: 0;
+  padding: 0 20px;
+  color: #000;
+}
+
+/* Empty state message */
+.no-history {
+  margin: 8px 0 0 0;
+  padding: 0 20px;
+  color: #000;
+  font-size: 16px;
+}
+
+/* Content area below header */
+.history-content {
+  width: 100%;
+  padding: 20px;
+}
+
+/* Optional: if your food-container is grid, keep it from sticking to edge */
+.food-container {
+  width: 100%;
 }
