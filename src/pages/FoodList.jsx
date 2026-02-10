@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import "../styles/FoodList.css";
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from "../config";
 
 const FALLBACK_IMG =
   "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=800&q=80";
+console.log("API_BASE AT RUNTIME =", API_BASE);
 
 export default function FoodList({ query = "" }) {
   const navigate = useNavigate();
@@ -20,7 +22,7 @@ export default function FoodList({ query = "" }) {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const t = useRef(null);
 
-  // ✅ prevent double-click spam on external imports
+  // prevent double import spam
   const [importingKey, setImportingKey] = useState(null);
 
   useEffect(() => {
@@ -31,37 +33,34 @@ export default function FoodList({ query = "" }) {
 
   const buildUrl = (pageToFetch) => {
     if (!debouncedQuery) {
-      return `http://localhost:8080/api/feed?page=${pageToFetch}&size=${size}`;
+      return `${API_BASE}/api/feed?page=${pageToFetch}&size=${size}`;
     }
-    return `http://localhost:8080/api/search?q=${encodeURIComponent(
+    return `${API_BASE}/api/search?q=${encodeURIComponent(
       debouncedQuery
     )}&page=${pageToFetch}&size=${size}`;
   };
 
+  // ✅ PUBLIC: feed/search should NOT require token
   const fetchPage = async (pageToFetch) => {
-    const user = JSON.parse(localStorage.getItem("user"));
-    const token = user?.token;
-
     try {
-      const res = await fetch(buildUrl(pageToFetch), {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await fetch(buildUrl(pageToFetch));
 
-      if (!res.ok) throw new Error("Failed to load");
+      if (!res.ok) throw new Error(`Failed to load: ${res.status}`);
 
       const data = await res.json();
 
-      // feed returns array; hybrid returns {items: [...]}
-      const list = Array.isArray(data) ? data : (data.items || []);
+      const list = Array.isArray(data) ? data : data.items || [];
 
-      const cleaned = (list || []).map((r) => ({
+      const cleaned = list.map((r) => ({
         ...r,
         imageUrl: r.imageUrl || FALLBACK_IMG,
       }));
 
       if (cleaned.length < size) setHasMore(false);
 
-      setItems((prev) => (pageToFetch === 0 ? cleaned : [...prev, ...cleaned]));
+      setItems((prev) =>
+        pageToFetch === 0 ? cleaned : [...prev, ...cleaned]
+      );
     } catch (err) {
       console.error("Load error:", err);
       if (pageToFetch === 0) setItems([]);
@@ -86,8 +85,9 @@ export default function FoodList({ query = "" }) {
     setLoadingMore(false);
   };
 
+  // 🔐 likes STILL need token
   const likeRecipe = async (id) => {
-    const user = JSON.parse(localStorage.getItem("user"));
+    const user = JSON.parse(localStorage.getItem("user") || "null");
     const token = user?.token;
 
     if (!token) {
@@ -96,7 +96,7 @@ export default function FoodList({ query = "" }) {
     }
 
     try {
-      const res = await fetch(`http://localhost:8080/api/likes/${id}`, {
+      const res = await fetch(`${API_BASE}/api/likes/${id}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -105,6 +105,7 @@ export default function FoodList({ query = "" }) {
         navigate("/log");
         return;
       }
+
       if (!res.ok) return;
 
       const data = await res.json();
@@ -118,7 +119,6 @@ export default function FoodList({ query = "" }) {
     }
   };
 
-  // ✅ IMPORT ON CLICK (external → save in DB → open /recipe/{id})
   const handleCardClick = async (item, idx) => {
     if (!item.isExternal) {
       navigate(`/recipe/${item.id}`);
@@ -126,19 +126,19 @@ export default function FoodList({ query = "" }) {
     }
 
     const clickKey = `${item.source}-${item.externalId}-${idx}`;
-    if (importingKey === clickKey) return; // already importing this
+    if (importingKey === clickKey) return;
     setImportingKey(clickKey);
 
     try {
       const res = await fetch(
-        `http://localhost:8080/api/import/spoonacular/${item.externalId}`,
+        `${API_BASE}/api/import/spoonacular/${item.externalId}`,
         { method: "POST" }
       );
 
       if (!res.ok) throw new Error("Import failed");
 
-      const data = await res.json(); // { id: number }
-      if (!data?.id) throw new Error("No id returned from import");
+      const data = await res.json();
+      if (!data?.id) throw new Error("No id returned");
 
       navigate(`/recipe/${data.id}`);
     } catch (e) {
@@ -187,11 +187,11 @@ export default function FoodList({ query = "" }) {
 
                 <p>
                   {item.title}{" "}
-                  {item.isExternal ? (
+                  {item.isExternal && (
                     <span style={{ opacity: 0.6 }}>
                       • {isImporting ? "importing…" : "external"}
                     </span>
-                  ) : null}
+                  )}
                 </p>
 
                 {!item.isExternal && (
@@ -213,13 +213,7 @@ export default function FoodList({ query = "" }) {
       </div>
 
       {hasMore && (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            padding: "28px 0",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "center", padding: 28 }}>
           <button
             className="loadmore-btn"
             onClick={loadMore}
