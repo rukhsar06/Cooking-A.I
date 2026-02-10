@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { API_BASE } from "../config";
 
 export default function AiMic({ recipeTitle = "", contextText = "" }) {
   const [listening, setListening] = useState(false);
@@ -21,7 +22,9 @@ export default function AiMic({ recipeTitle = "", contextText = "" }) {
 
     const voices = window.speechSynthesis.getVoices() || [];
     const preferred =
-      voices.find((v) => /en/i.test(v.lang) && /female|Google|Siri/i.test(v.name)) ||
+      voices.find(
+        (v) => /en/i.test(v.lang) && /female|Google|Siri/i.test(v.name)
+      ) ||
       voices.find((v) => /en/i.test(v.lang)) ||
       voices[0];
 
@@ -36,8 +39,9 @@ export default function AiMic({ recipeTitle = "", contextText = "" }) {
     window.speechSynthesis.speak(u);
   };
 
+  // 🔥 FIXED: uses API_BASE instead of localhost
   const askAI = async (userText) => {
-    const res = await fetch("http://localhost:8080/api/ai/guide", {
+    const res = await fetch(`${API_BASE}/api/ai/guide`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -122,7 +126,13 @@ export default function AiMic({ recipeTitle = "", contextText = "" }) {
     <button
       onClick={handleClick}
       title={
-        busy ? "Working…" : speaking ? "Stop speaking" : listening ? "Listening…" : "Ask AI"
+        busy
+          ? "Working…"
+          : speaking
+          ? "Stop speaking"
+          : listening
+          ? "Listening…"
+          : "Ask AI"
       }
       style={{
         border: "none",
