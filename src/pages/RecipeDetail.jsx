@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { FaMicrophone } from "react-icons/fa";
 import "../styles/RecipeDetail.css";
@@ -6,7 +6,6 @@ import { API_BASE } from "../config";
 
 const FALLBACK_IMG =
   "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=800&q=80";
-  console.log("API_BASE AT RUNTIME =", API_BASE);
 
 export default function RecipeDetail() {
   const { id } = useParams();
@@ -15,12 +14,14 @@ export default function RecipeDetail() {
   const [recipe, setRecipe] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ history protected, view public
+  const recognitionRef = useRef(null);
+  const [listening, setListening] = useState(false);
+  const [busy, setBusy] = useState(false);
+
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("user") || "null");
     const token = user?.token;
 
-    // history requires login
     if (token) {
       fetch(`${API_BASE}/api/history/${id}`, {
         method: "POST",
@@ -28,19 +29,20 @@ export default function RecipeDetail() {
       }).catch(() => {});
     }
 
-    // view is public -> send NO token
     fetch(`${API_BASE}/api/feed/${id}/view`, {
       method: "POST",
     }).catch(() => {});
   }, [id]);
 
-  // ✅ public recipe details
   useEffect(() => {
     setLoading(true);
 
     fetch(`${API_BASE}/api/recipes/public/${id}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load recipe");
+      .then(async (res) => {
+        if (!res.ok) {
+          const msg = await res.text().catch(() => "");
+          throw new Error(`Recipe fetch failed: ${res.status} ${msg}`);
+        }
         return res.json();
       })
       .then((data) => {
@@ -63,8 +65,18 @@ export default function RecipeDetail() {
     window.speechSynthesis.speak(u);
   };
 
-  const handleAiMic = () => {
-    if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
+  const stopListening = () => {
+    try {
+      recognitionRef.current?.abort?.();
+    } catch {}
+    setListening(false);
+  };
+
+  const startListening = () => {
+    const hasSTT =
+      "webkitSpeechRecognition" in window || "SpeechRecognition" in window;
+
+    if (!hasSTT) {
       alert("Speech recognition not supported in this browser!");
       return;
     }
@@ -76,15 +88,25 @@ export default function RecipeDetail() {
 
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
+
     const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+
     recognition.lang = "en-US";
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
+    setListening(true);
     recognition.start();
 
     recognition.onresult = async (event) => {
-      const transcript = event.results[0][0].transcript;
+      const transcript = event.results?.[0]?.[0]?.transcript || "";
+      setListening(false);
+
+      if (!transcript.trim()) {
+        speak("I didn’t hear anything.");
+        return;
+      }
 
       const contextText = `
 Recipe: ${recipe?.title || ""}
@@ -96,6 +118,7 @@ Instructions:
 ${recipe?.steps || recipe?.instructions || ""}
       `.trim();
 
+      setBusy(true);
       try {
         const res = await fetch(`${API_BASE}/api/ai/guide`, {
           method: "POST",
@@ -109,22 +132,61 @@ ${recipe?.steps || recipe?.instructions || ""}
 
         if (!res.ok) {
           const msg = await res.text().catch(() => "");
-          console.error("AI error status:", res.status, msg);
-          throw new Error(`AI error ${res.status}`);
+          console.error("AI error:", res.status, msg);
+          speak("AI isn’t reachable right now.");
+          return;
         }
 
         const data = await res.json();
         speak(data.reply || "I didn’t get a reply.");
       } catch (e) {
-        console.error(e);
-        speak("I couldn’t reach the AI service. Try again.");
+        console.error("AI request failed:", e);
+        speak("AI isn’t reachable right now.");
+      } finally {
+        setBusy(false);
       }
     };
 
     recognition.onerror = (event) => {
+      // Chrome common errors: "no-speech", "aborted", "audio-capture", "not-allowed"
       console.error("Mic error:", event.error);
+
+      setListening(false);
+
+      if (event.error === "no-speech") {
+        speak("I didn’t hear you. Try again.");
+        return;
+      }
+      if (event.error === "aborted") {
+        // user clicked again / navigation / stop — don’t annoy them
+        return;
+      }
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        speak("Mic permission is blocked. Allow it in site settings.");
+        return;
+      }
+      if (event.error === "audio-capture") {
+        speak("No microphone found. Check your device input.");
+        return;
+      }
+
       speak("Mic error. Try again.");
     };
+
+    recognition.onend = () => {
+      setListening(false);
+    };
+  };
+
+  const handleAiMic = () => {
+    if (busy) return;
+
+    if (listening) {
+      stopListening();
+      return;
+    }
+
+    startListening();
   };
 
   if (loading) return <p style={{ padding: 20 }}>Loading recipe…</p>;
@@ -178,7 +240,12 @@ ${recipe?.steps || recipe?.instructions || ""}
         </section>
       </div>
 
-      <button className="ai-mic-float" onClick={handleAiMic} title="Ask AI">
+      <button
+        className="ai-mic-float"
+        onClick={handleAiMic}
+        title={busy ? "Working…" : listening ? "Listening… click to stop" : "Ask AI"}
+        style={{ opacity: busy ? 0.6 : 1 }}
+      >
         <FaMicrophone size={22} />
       </button>
     </div>

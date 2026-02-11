@@ -9,7 +9,6 @@ export default function AiMic({ recipeTitle = "", contextText = "" }) {
   const recognitionRef = useRef(null);
 
   useEffect(() => {
-    // warm up voices on some browsers
     if (window.speechSynthesis) window.speechSynthesis.getVoices();
   }, []);
 
@@ -17,14 +16,11 @@ export default function AiMic({ recipeTitle = "", contextText = "" }) {
     if (!window.speechSynthesis) return;
 
     window.speechSynthesis.cancel();
-
     const u = new SpeechSynthesisUtterance(text);
 
     const voices = window.speechSynthesis.getVoices() || [];
     const preferred =
-      voices.find(
-        (v) => /en/i.test(v.lang) && /female|Google|Siri/i.test(v.name)
-      ) ||
+      voices.find((v) => /en/i.test(v.lang) && /female|Google|Siri/i.test(v.name)) ||
       voices.find((v) => /en/i.test(v.lang)) ||
       voices[0];
 
@@ -39,20 +35,19 @@ export default function AiMic({ recipeTitle = "", contextText = "" }) {
     window.speechSynthesis.speak(u);
   };
 
-  // 🔥 FIXED: uses API_BASE instead of localhost
   const askAI = async (userText) => {
     const res = await fetch(`${API_BASE}/api/ai/guide`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userText,
-        recipeTitle,
-        contextText,
-      }),
+      body: JSON.stringify({ userText, recipeTitle, contextText }),
     });
 
-    if (!res.ok) throw new Error("AI request failed");
-    return await res.json(); // { reply: "..." }
+    if (!res.ok) {
+      const msg = await res.text().catch(() => "");
+      throw new Error(`AI failed: ${res.status} ${msg}`);
+    }
+
+    return await res.json();
   };
 
   const stopAll = () => {
@@ -66,7 +61,10 @@ export default function AiMic({ recipeTitle = "", contextText = "" }) {
   };
 
   const startListening = () => {
-    if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
+    const hasSTT =
+      "webkitSpeechRecognition" in window || "SpeechRecognition" in window;
+
+    if (!hasSTT) {
       alert("Speech recognition not supported in this browser!");
       return;
     }
@@ -88,13 +86,15 @@ export default function AiMic({ recipeTitle = "", contextText = "" }) {
       const transcript = event.results?.[0]?.[0]?.transcript || "";
       setListening(false);
 
-      if (!transcript.trim()) return;
+      if (!transcript.trim()) {
+        speak("I didn’t hear you. Try again.");
+        return;
+      }
 
       setBusy(true);
       try {
         const data = await askAI(transcript);
-        const reply = data?.reply || "I didn't get that.";
-        speak(reply);
+        speak(data?.reply || "I didn't get that.");
       } catch (e) {
         console.error(e);
         speak("Sorry, I couldn’t reach the AI right now.");
@@ -106,6 +106,19 @@ export default function AiMic({ recipeTitle = "", contextText = "" }) {
     recognition.onerror = (event) => {
       console.error("STT error:", event.error);
       setListening(false);
+
+      if (event.error === "no-speech") {
+        speak("I didn’t hear you. Try again.");
+        return;
+      }
+      if (event.error === "aborted") return;
+
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        speak("Mic permission is blocked. Allow it in site settings.");
+        return;
+      }
+
+      speak("Mic error. Try again.");
     };
 
     recognition.onend = () => setListening(false);
@@ -121,7 +134,6 @@ export default function AiMic({ recipeTitle = "", contextText = "" }) {
 
     startListening();
   };
-  console.log("API_BASE AT RUNTIME =", API_BASE);
 
   return (
     <button
