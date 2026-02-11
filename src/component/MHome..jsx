@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { FaMicrophone } from "react-icons/fa";
 import "../styles/mhome.css";
 import snoopy from "../photos/Snoopy.png";
@@ -38,7 +38,7 @@ export default function MHome() {
   const [busy, setBusy] = useState(false);
 
   const recognitionRef = useRef(null);
-  const listenTimeoutRef = useRef(null);
+  const silenceTimerRef = useRef(null);
 
   const nextSlide = () => setCurrent((prev) => (prev + 1) % slides.length);
   const prevSlide = () => setCurrent((prev) => (prev - 1 + slides.length) % slides.length);
@@ -52,21 +52,47 @@ export default function MHome() {
     window.speechSynthesis.speak(u);
   };
 
-  const buildRecognition = () => {
+  const warmUpMic = async () => {
+    // This is the real fix for instant "no-speech" on many systems
+    if (!navigator.mediaDevices?.getUserMedia) return;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // stop immediately (we only use it to force mic permission + device activation)
+    stream.getTracks().forEach((t) => t.stop());
+  };
+
+  const getRecognition = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return null;
 
     const r = new SpeechRecognition();
     r.lang = "en-US";
     r.interimResults = false;
-    r.continuous = false; // IMPORTANT for "single question" mode
+    r.continuous = false; // important: less buggy than continuous for simple “ask once”
     r.maxAlternatives = 1;
 
+    r.onstart = () => {
+      setListening(true);
+      // auto-stop if user stays silent too long
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => {
+        try { r.stop(); } catch {}
+      }, 8000);
+    };
+
+    r.onaudiostart = () => {
+      // reset the silence timer once audio starts flowing
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => {
+        try { r.stop(); } catch {}
+      }, 8000);
+    };
+
     r.onresult = async (event) => {
-      clearTimeout(listenTimeoutRef.current);
-      setListening(false);
+      clearTimeout(silenceTimerRef.current);
 
       const transcript = (event.results?.[0]?.[0]?.transcript || "").trim();
+      setListening(false);
+
       if (!transcript) {
         speak("I didn’t hear you. Try again.");
         return;
@@ -85,126 +111,88 @@ export default function MHome() {
           }),
         });
 
-        const text = await res.text().catch(() => "");
+        const raw = await res.text().catch(() => "");
         if (!res.ok) {
-          console.error("AI error:", res.status, text);
-          speak("AI is not connected right now. Try again.");
+          console.error("AI error:", res.status, raw);
+          speak("AI isn’t reachable right now.");
           return;
         }
 
         let data;
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = { reply: text };
-        }
-
+        try { data = JSON.parse(raw); } catch { data = { reply: raw }; }
         speak(data.reply || "I didn’t get a reply.");
       } catch (e) {
-        console.error(e);
-        speak("AI is not connected right now. Try again.");
+        console.error("AI request failed:", e);
+        speak("AI isn’t reachable right now.");
       } finally {
         setBusy(false);
       }
     };
 
     r.onerror = (event) => {
-      clearTimeout(listenTimeoutRef.current);
-      console.error("SpeechRecognition error:", event.error);
+      clearTimeout(silenceTimerRef.current);
+      setListening(false);
 
-      // ✅ THIS is your real issue: treat it as non-fatal
+      // THIS is your exact error:
       if (event.error === "no-speech") {
-        setListening(false);
+        // do NOT treat as “mic broken”
         speak("I didn’t hear you. Try again.");
         return;
       }
 
-      if (event.error === "aborted") {
-        setListening(false);
-        return;
-      }
-
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-        setListening(false);
         speak("Mic permission is blocked. Allow it in site settings.");
         return;
       }
 
       if (event.error === "audio-capture") {
-        setListening(false);
-        speak("No microphone input detected.");
+        speak("No microphone detected. Check your input device.");
         return;
       }
 
-      setListening(false);
+      console.error("SpeechRecognition error:", event.error, event);
       speak("Mic error. Try again.");
     };
 
     r.onend = () => {
-      clearTimeout(listenTimeoutRef.current);
-      // if it ends without result, we just stop UI
+      clearTimeout(silenceTimerRef.current);
       setListening(false);
     };
 
     return r;
   };
 
-  const handleMicClick = () => {
+  const handleMicClick = async () => {
     if (busy) return;
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
+    if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
       alert("Speech recognition not supported in this browser!");
       return;
     }
 
-    // stop any speaking first (prevents recognition ending instantly)
-    window.speechSynthesis?.cancel?.();
+    // stop any old recognition instance cleanly
+    try { recognitionRef.current?.stop?.(); } catch {}
 
-    if (!recognitionRef.current) {
-      recognitionRef.current = buildRecognition();
-    }
-
-    const r = recognitionRef.current;
-    if (!r) return;
-
-    // if already listening -> stop
-    if (listening) {
-      try {
-        r.stop();
-      } catch {}
-      setListening(false);
+    try {
+      await warmUpMic(); // ✅ IMPORTANT
+    } catch (e) {
+      console.error("Mic warm-up failed:", e);
+      speak("Mic permission problem. Check site settings.");
       return;
     }
 
-    setListening(true);
+    const r = getRecognition();
+    if (!r) return;
 
-    // auto-stop if user stays silent too long (avoids endless “listening”)
-    clearTimeout(listenTimeoutRef.current);
-    listenTimeoutRef.current = setTimeout(() => {
-      try {
-        r.stop();
-      } catch {}
-      setListening(false);
-      speak("I didn’t hear you. Try again.");
-    }, 7000);
+    recognitionRef.current = r;
 
     try {
       r.start();
-    } catch {
-      // InvalidStateError if start spam — ignore
+    } catch (e) {
+      // InvalidStateError if spam-clicked
+      console.warn("Recognition start failed:", e);
     }
   };
-
-  useEffect(() => {
-    return () => {
-      clearTimeout(listenTimeoutRef.current);
-      try {
-        recognitionRef.current?.stop?.();
-      } catch {}
-      window.speechSynthesis?.cancel?.();
-    };
-  }, []);
 
   console.log("API_BASE AT RUNTIME =", API_BASE);
 
@@ -271,7 +259,7 @@ export default function MHome() {
               size={20}
               className="mic-icon"
               onClick={handleMicClick}
-              title={busy ? "Working…" : listening ? "Listening… click to stop" : "Ask AI"}
+              title={busy ? "Working…" : listening ? "Listening…" : "Ask AI"}
               style={{ opacity: busy ? 0.6 : 1 }}
             />
           </div>
