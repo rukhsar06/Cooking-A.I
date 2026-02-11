@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { FaMicrophone } from "react-icons/fa";
 import "../styles/mhome.css";
 import snoopy from "../photos/Snoopy.png";
@@ -34,76 +34,79 @@ export default function MHome() {
   const [current, setCurrent] = useState(0);
   const [query, setQuery] = useState("");
 
-  const [listening, setListening] = useState(false);
   const [busy, setBusy] = useState(false);
-
   const recognitionRef = useRef(null);
-  const isSpeakingRef = useRef(false);
-  const silenceTimerRef = useRef(null);
 
   const nextSlide = () => setCurrent((prev) => (prev + 1) % slides.length);
   const prevSlide = () =>
     setCurrent((prev) => (prev - 1 + slides.length) % slides.length);
 
-  useEffect(() => {
-    // preload voices on some browsers
-    if (window.speechSynthesis) window.speechSynthesis.getVoices();
-  }, []);
-
+  // --------- TTS ----------
   const speak = (text) => {
     if (!window.speechSynthesis || !text) return;
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 1;
+      u.pitch = 1;
+      window.speechSynthesis.speak(u);
+    } catch {}
+  };
 
-    // stop mic while speaking (prevents weird no-speech loops)
+  const stopRecognition = () => {
+    try {
+      recognitionRef.current?.abort?.();
+    } catch {}
     try {
       recognitionRef.current?.stop?.();
     } catch {}
-
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 1;
-    u.pitch = 1;
-
-    u.onstart = () => (isSpeakingRef.current = true);
-    u.onend = () => (isSpeakingRef.current = false);
-    u.onerror = () => (isSpeakingRef.current = false);
-
-    window.speechSynthesis.speak(u);
+    recognitionRef.current = null;
   };
 
-  const ensureMicPermission = async () => {
-    // This forces the browser to properly grant mic access (fixes a LOT of no-speech issues)
-    if (!navigator.mediaDevices?.getUserMedia) return;
+  // build single-shot recognition each click (stable)
+  const handleMicClick = () => {
+    if (busy) return;
 
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stream.getTracks().forEach((t) => t.stop());
-  };
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
 
-  const buildRecognition = () => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return null;
+    if (!SpeechRecognition) {
+      alert("Speech recognition not supported in this browser!");
+      return;
+    }
 
-    const r = new SR();
-    r.lang = "en-US";
-    r.interimResults = false;
-    r.continuous = false; // ✅ more stable for “ask once”
-    r.maxAlternatives = 1;
+    // stop any old session
+    stopRecognition();
 
-    r.onresult = async (event) => {
-      clearTimeout(silenceTimerRef.current);
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
 
-      const transcript = (event.results?.[0]?.[0]?.transcript || "").trim();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.maxAlternatives = 1;
 
-      setListening(false);
-      try {
-        r.stop();
-      } catch {}
+    setBusy(true);
+
+    try {
+      recognition.start();
+    } catch (e) {
+      console.error("recognition.start failed:", e);
+      setBusy(false);
+      speak("Mic start failed. Try again.");
+      return;
+    }
+
+    recognition.onresult = async (event) => {
+      const transcript = (event?.results?.[0]?.[0]?.transcript || "").trim();
+      stopRecognition();
 
       if (!transcript) {
-        speak("I didn’t catch that. Try again.");
+        setBusy(false);
+        speak("I didn’t hear anything. Try again.");
         return;
       }
 
-      setBusy(true);
       try {
         const res = await fetch(`${API_BASE}/api/ai/guide`, {
           method: "POST",
@@ -116,137 +119,52 @@ export default function MHome() {
           }),
         });
 
-        const text = await res.text().catch(() => "");
         if (!res.ok) {
-          console.error("AI error:", res.status, text);
-          speak("AI is not connected right now. Try again.");
-          return;
+          const msg = await res.text().catch(() => "");
+          console.error("AI error:", res.status, msg);
+          throw new Error("AI not available");
         }
 
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = { reply: text };
-        }
-
+        const data = await res.json().catch(() => ({}));
         speak(data.reply || "I didn’t get a reply.");
       } catch (e) {
-        console.error("AI request failed:", e);
+        console.error("AI fetch failed:", e);
         speak("AI is not connected right now. Try again.");
       } finally {
         setBusy(false);
       }
     };
 
-    r.onerror = (event) => {
-      clearTimeout(silenceTimerRef.current);
+    recognition.onerror = (event) => {
+      console.error("Mic error:", event?.error);
+      stopRecognition();
+      setBusy(false);
 
-      const err = event?.error;
-      console.error("SpeechRecognition error:", err);
-
-      // ✅ DO NOT treat no-speech like “mic broken”
-      if (err === "no-speech") {
-        setListening(false);
-        speak("I didn’t hear you. Try again, a bit closer to the mic.");
+      if (event?.error === "no-speech") {
+        speak("I didn’t hear anything. Try again.");
         return;
       }
-
-      if (err === "aborted") {
-        setListening(false);
+      if (event?.error === "not-allowed" || event?.error === "service-not-allowed") {
+        speak("Mic permission blocked. Allow it in site settings.");
         return;
       }
-
-      if (err === "not-allowed" || err === "service-not-allowed") {
-        setListening(false);
-        speak("Mic permission is blocked. Allow it in site settings.");
-        return;
-      }
-
-      if (err === "audio-capture") {
-        setListening(false);
+      if (event?.error === "audio-capture") {
         speak("No microphone input detected.");
         return;
       }
-
-      setListening(false);
       speak("Mic error. Try again.");
     };
 
-    r.onend = () => {
-      clearTimeout(silenceTimerRef.current);
-      setListening(false);
+    recognition.onend = () => {
+      // if user ends without result, let error handle it
+      setBusy(false);
+      stopRecognition();
     };
-
-    return r;
   };
 
-  const startListening = async () => {
-    if (busy) return;
-
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      alert("Speech recognition not supported in this browser!");
-      return;
-    }
-
-    // stop any TTS before listening
-    try {
-      window.speechSynthesis?.cancel?.();
-    } catch {}
-
-    try {
-      await ensureMicPermission();
-    } catch (e) {
-      console.error("getUserMedia permission failed:", e);
-      speak("Mic permission is blocked. Allow it in site settings.");
-      return;
-    }
-
-    if (!recognitionRef.current) {
-      recognitionRef.current = buildRecognition();
-    }
-
-    const r = recognitionRef.current;
-    if (!r) {
-      alert("Speech recognition not supported in this browser!");
-      return;
-    }
-
-    setListening(true);
-
-    // If user doesn’t speak quickly, we stop and prompt (prevents endless “no-speech” spam)
-    clearTimeout(silenceTimerRef.current);
-    silenceTimerRef.current = setTimeout(() => {
-      try {
-        r.stop();
-      } catch {}
-      setListening(false);
-      speak("I’m listening… say something 😭");
-    }, 9000);
-
-    try {
-      r.start();
-    } catch (e) {
-      // InvalidStateError happens if start is called twice
-      console.warn("Recognition start ignored:", e?.message);
-    }
-  };
-
-  const stopListening = () => {
-    setListening(false);
-    clearTimeout(silenceTimerRef.current);
-    try {
-      recognitionRef.current?.stop?.();
-    } catch {}
-  };
-
-  const handleMicClick = () => {
-    if (listening) stopListening();
-    else startListening();
-  };
-
-  console.log("API_BASE AT RUNTIME =", API_BASE);
+  useEffect(() => {
+    console.log("API_BASE AT RUNTIME =", API_BASE);
+  }, []);
 
   return (
     <>
@@ -311,8 +229,8 @@ export default function MHome() {
               size={20}
               className="mic-icon"
               onClick={handleMicClick}
-              title={busy ? "Working..." : listening ? "Listening... click to stop" : "Tap to speak"}
-              style={{ opacity: busy ? 0.6 : 1 }}
+              title={busy ? "Listening..." : "Tap to speak"}
+              style={{ opacity: busy ? 0.6 : 1, pointerEvents: busy ? "none" : "auto" }}
             />
           </div>
         </div>
