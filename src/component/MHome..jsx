@@ -96,6 +96,7 @@ export default function MHome() {
       speak("Mic error. Try again.");
     };
   };
+  console.log("API_BASE AT RUNTIME =", API_BASE);
 
   return (
     <>

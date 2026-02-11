@@ -121,6 +121,7 @@ export default function AiMic({ recipeTitle = "", contextText = "" }) {
 
     startListening();
   };
+  console.log("API_BASE AT RUNTIME =", API_BASE);
 
   return (
     <button

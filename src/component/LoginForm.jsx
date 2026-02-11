@@ -26,6 +26,7 @@ function PasswordInput({ value, onChange, placeholder }) {
     </div>
   );
 }
+console.log("API_BASE AT RUNTIME =", API_BASE);
 
 function LoginForm() {
   const navigate = useNavigate();

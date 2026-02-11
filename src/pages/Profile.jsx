@@ -10,6 +10,7 @@ export default function Profile() {
 
   const storedUser = JSON.parse(localStorage.getItem("user") || "null");
   const [user, setUser] = useState(storedUser);
+  console.log("API_BASE AT RUNTIME =", API_BASE);
 
   const [likedList, setLikedList] = useState([]);
   const [historyList, setHistoryList] = useState([]);

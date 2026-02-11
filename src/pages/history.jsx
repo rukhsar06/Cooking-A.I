@@ -5,6 +5,7 @@ import { API_BASE } from "../config";
 
 const FALLBACK_IMG =
   "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=800&q=80";
+  console.log("API_BASE AT RUNTIME =", API_BASE);
 
 export default function History() {
   const navigate = useNavigate();

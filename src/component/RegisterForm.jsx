@@ -6,6 +6,7 @@ import { API_BASE } from "../config";
 
 function PasswordInput({ placeholder, value, onChange }) {
   const [visible, setVisible] = useState(false);
+  
 
   return (
     <div className="password-wrapper">
@@ -26,6 +27,7 @@ function PasswordInput({ placeholder, value, onChange }) {
     </div>
   );
 }
+console.log("API_BASE AT RUNTIME =", API_BASE);
 
 function RegisterForm() {
   const navigate = useNavigate();
