@@ -153,3 +153,13 @@
 .ai-mic-float:active {
   transform: translateY(0px) scale(0.98);
 }
+
+.instructions-steps {
+  padding-left: 20px;
+  margin: 0;
+}
+
+.instructions-steps li {
+  margin-bottom: 12px;
+  line-height: 1.7;
+}

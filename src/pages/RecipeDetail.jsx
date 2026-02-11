@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { FaMicrophone } from "react-icons/fa";
 import "../styles/RecipeDetail.css";
@@ -369,6 +369,34 @@ ${recipe?.steps || recipe?.instructions || ""}
     };
   }, []);
 
+  // ✅ Build nice steps from your "step 1 ... step 2 ..." string
+  const stepsList = useMemo(() => {
+    const raw = (recipe?.steps || recipe?.instructions || "").trim();
+    if (!raw) return [];
+
+    // If it already has "step 1 / step 2" -> split by that
+    if (/step\s*\d+/i.test(raw)) {
+      return raw
+        .split(/step\s*\d+\s*/gi)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+
+    // Otherwise try splitting by new lines
+    if (raw.includes("\n")) {
+      return raw
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+
+    // Fallback: split by sentences
+    return raw
+      .split(".")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }, [recipe]);
+
   if (loading) return <p style={{ padding: 20 }}>Loading recipe…</p>;
 
   if (!recipe) {
@@ -414,9 +442,18 @@ ${recipe?.steps || recipe?.instructions || ""}
 
         <section className="recipe-section">
           <h2>Instructions</h2>
-          <div className="instructions-box">
-            {recipe.steps || recipe.instructions}
-          </div>
+
+          {stepsList.length ? (
+            <ol className="instructions-steps">
+              {stepsList.map((step, idx) => (
+                <li key={idx}>
+                  <strong>Step {idx + 1}:</strong> {step}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <div className="instructions-box">{recipe.steps || recipe.instructions}</div>
+          )}
         </section>
       </div>
 
