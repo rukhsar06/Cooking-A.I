@@ -1,187 +1,164 @@
 import React, { useEffect, useRef, useState } from "react";
-import { API_BASE } from "../config";
 
-export default function AiMic({ recipeTitle = "", contextText = "" }) {
+/**
+ * Usage:
+ * <AiMic
+ *   onText={(text) => setQuery(text)}   // put recognized text wherever you want
+ *   autoStopMs={8000}                  // optional
+ * />
+ */
+export default function AiMic({
+  onText,
+  autoStopMs = 9000,
+  className = "",
+  disabled = false,
+}) {
   const [listening, setListening] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
-  const recognitionRef = useRef(null);
+  const recRef = useRef(null);
+  const stopTimerRef = useRef(null);
+
+  const getRecognizer = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
+
+    const r = new SR();
+    r.lang = "en-US";          // change if needed
+    r.continuous = false;      // we just want one phrase
+    r.interimResults = false;  // final only
+    r.maxAlternatives = 1;
+    return r;
+  };
+
+  const clearStopTimer = () => {
+    if (stopTimerRef.current) {
+      clearTimeout(stopTimerRef.current);
+      stopTimerRef.current = null;
+    }
+  };
+
+  const safeStop = () => {
+    clearStopTimer();
+    try {
+      recRef.current?.stop();
+    } catch {}
+  };
 
   useEffect(() => {
-    if (window.speechSynthesis) window.speechSynthesis.getVoices();
-  }, []);
+    const r = getRecognizer();
+    recRef.current = r;
 
-  const speak = (text) => {
-    if (!window.speechSynthesis) return;
-
-    window.speechSynthesis.cancel();
-
-    const u = new SpeechSynthesisUtterance(text);
-
-    const voices = window.speechSynthesis.getVoices() || [];
-    const preferred =
-      voices.find(
-        (v) => /en/i.test(v.lang) && /female|Google|Siri/i.test(v.name)
-      ) ||
-      voices.find((v) => /en/i.test(v.lang)) ||
-      voices[0];
-
-    if (preferred) u.voice = preferred;
-    u.rate = 1;
-    u.pitch = 1;
-
-    u.onstart = () => setSpeaking(true);
-    u.onend = () => setSpeaking(false);
-    u.onerror = () => setSpeaking(false);
-
-    window.speechSynthesis.speak(u);
-  };
-
-  const askAI = async (userText) => {
-    const res = await fetch(`${API_BASE}/api/ai/guide`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userText, recipeTitle, contextText }),
-    });
-
-    if (!res.ok) {
-      const msg = await res.text().catch(() => "");
-      throw new Error(`AI failed: ${res.status} ${msg}`);
-    }
-
-    return await res.json();
-  };
-
-  const stopAll = () => {
-    try {
-      recognitionRef.current?.abort?.();
-    } catch {}
-    setListening(false);
-
-    if (window.speechSynthesis) window.speechSynthesis.cancel();
-    setSpeaking(false);
-  };
-
-  const startListening = () => {
-    const hasSTT =
-      "webkitSpeechRecognition" in window || "SpeechRecognition" in window;
-
-    if (!hasSTT) {
-      alert("Speech recognition not supported in this browser!");
+    if (!r) {
+      setError("Speech recognition not supported (use Chrome).");
       return;
     }
 
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    const recognition = new SpeechRecognition();
-    recognitionRef.current = recognition;
-
-    recognition.lang = "en-US";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-
-    // ✅ make Chrome less annoying
-    recognition.continuous = false;
-    recognition.onspeechstart = () => {
-      // helpful for debugging
-      // console.log("Speech detected");
+    r.onstart = () => {
+      setError("");
+      setListening(true);
+      clearStopTimer();
+      stopTimerRef.current = setTimeout(() => {
+        // auto stop so it doesn't get stuck listening forever
+        safeStop();
+      }, autoStopMs);
     };
 
-    setListening(true);
-
-    try {
-      recognition.start();
-    } catch (e) {
-      console.error("Recognition start failed:", e);
+    r.onend = () => {
+      clearStopTimer();
       setListening(false);
-      speak("Mic couldn’t start. Try again.");
-      return;
-    }
+    };
 
-    recognition.onresult = async (event) => {
-      const transcript = event.results?.[0]?.[0]?.transcript || "";
+    r.onerror = (e) => {
+      // THIS is the real reason.
+      console.error("SpeechRecognition error:", e?.error, e);
+
+      clearStopTimer();
       setListening(false);
 
-      if (!transcript.trim()) {
-        // Chrome sometimes gives empty transcript
-        speak("I didn’t hear you. Try again.");
+      const code = e?.error || "unknown";
+
+      // useful messages
+      if (code === "not-allowed" || code === "service-not-allowed") {
+        setError("Mic blocked. Allow microphone permission for this site.");
+      } else if (code === "no-speech") {
+        setError("I didn’t hear you. Try speaking a bit louder/closer.");
+      } else if (code === "audio-capture") {
+        setError("No microphone found / mic in use by another app.");
+      } else if (code === "network") {
+        setError("Speech service/network issue. Try again.");
+      } else {
+        setError(`Mic error: ${code}`);
+      }
+    };
+
+    r.onresult = (e) => {
+      clearStopTimer();
+
+      const text = e?.results?.[0]?.[0]?.transcript?.trim() || "";
+      if (!text) {
+        setError("I didn’t catch that. Try again.");
         return;
       }
 
-      setBusy(true);
+      setError("");
+      if (typeof onText === "function") onText(text);
+    };
+
+    return () => {
+      clearStopTimer();
       try {
-        const data = await askAI(transcript);
-        speak(data?.reply || "I didn't get that.");
-      } catch (e) {
-        console.error(e);
-        speak("Sorry, I couldn’t reach the AI right now.");
-      } finally {
-        setBusy(false);
-      }
+        r.abort();
+      } catch {}
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStopMs]);
 
-    recognition.onerror = (event) => {
-      console.error("STT error:", event.error);
-      setListening(false);
+  const start = async () => {
+    if (disabled) return;
 
-      // ✅ Chrome false-positive: happens even when mic works
-      if (event.error === "no-speech") {
-        console.warn("No speech detected (Chrome quirk)");
-        return;
-      }
-
-      if (event.error === "aborted") return;
-
-      if (
-        event.error === "not-allowed" ||
-        event.error === "service-not-allowed"
-      ) {
-        speak("Mic permission is blocked. Allow it in site settings.");
-        return;
-      }
-
-      speak("Mic error. Try again.");
-    };
-
-    recognition.onend = () => {
-      setListening(false);
-    };
-  };
-
-  const handleClick = () => {
-    if (busy) return;
-
-    if (listening || speaking) {
-      stopAll();
+    const r = recRef.current;
+    if (!r) {
+      setError("Speech recognition not supported (use Chrome).");
       return;
     }
 
-    startListening();
+    // kill any previous run cleanly
+    try {
+      r.abort();
+    } catch {}
+
+    // IMPORTANT: must be triggered by user click
+    try {
+      setError("");
+      r.start();
+    } catch (err) {
+      console.error("Failed to start recognition:", err);
+      setError("Mic failed to start. Try again.");
+      setListening(false);
+    }
+  };
+
+  const toggle = () => {
+    if (listening) safeStop();
+    else start();
   };
 
   return (
     <button
-      onClick={handleClick}
-      title={
-        busy
-          ? "Working…"
-          : speaking
-          ? "Stop speaking"
-          : listening
-          ? "Listening…"
-          : "Ask AI"
-      }
-      style={{
-        border: "none",
-        background: "transparent",
-        cursor: busy ? "not-allowed" : "pointer",
-        fontSize: 18,
-        opacity: busy ? 0.5 : 1,
-      }}
+      type="button"
+      onClick={toggle}
+      disabled={disabled}
+      className={className}
+      title={error ? error : listening ? "Stop mic" : "Start mic"}
+      style={{ opacity: disabled ? 0.6 : 1 }}
     >
-      {busy ? "⏳" : speaking ? "🛑" : listening ? "🎙️…" : "🤖🎙️"}
+      {listening ? "🎙️" : "🎤"}
+      {error ? (
+        <span style={{ marginLeft: 8, fontSize: 12 }}>
+          {error}
+        </span>
+      ) : null}
     </button>
   );
 }

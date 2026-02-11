@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { FaMicrophone } from "react-icons/fa";
 import "../styles/mhome.css";
 import snoopy from "../photos/Snoopy.png";
@@ -33,13 +33,16 @@ export default function MHome() {
 
   const [current, setCurrent] = useState(0);
   const [query, setQuery] = useState("");
+  const [micBusy, setMicBusy] = useState(false);
+
+  const recognitionRef = useRef(null);
 
   const nextSlide = () => setCurrent((prev) => (prev + 1) % slides.length);
   const prevSlide = () =>
     setCurrent((prev) => (prev - 1 + slides.length) % slides.length);
 
   const speak = (text) => {
-    if (!window.speechSynthesis) return;
+    if (!window.speechSynthesis || !text) return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.rate = 1;
@@ -47,25 +50,26 @@ export default function MHome() {
     window.speechSynthesis.speak(u);
   };
 
-  const handleMicClick = () => {
-    if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
-      alert("Speech recognition not supported in this browser!");
-      return;
-    }
+  const buildRecognition = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
 
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
+    const r = new SR();
+    r.lang = "en-US";
+    r.continuous = false;
+    r.interimResults = false;
+    r.maxAlternatives = 1;
 
-    recognition.start();
-
-    recognition.onresult = async (event) => {
-      const transcript = event.results[0][0].transcript;
+    r.onresult = async (event) => {
+      const transcript = (event?.results?.[0]?.[0]?.transcript || "").trim();
+      if (!transcript) {
+        speak("I didn’t hear you. Try again.");
+        return;
+      }
 
       try {
+        setMicBusy(true);
+
         const res = await fetch(`${API_BASE}/api/ai/guide`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -77,25 +81,84 @@ export default function MHome() {
           }),
         });
 
+        const raw = await res.text().catch(() => "");
         if (!res.ok) {
-          const msg = await res.text().catch(() => "");
-          console.error("AI error:", res.status, msg);
+          console.error("AI error:", res.status, raw);
           throw new Error("AI not available");
         }
 
-        const data = await res.json();
+        let data;
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          data = { reply: raw };
+        }
+
         speak(data.reply || "I didn’t get a reply.");
       } catch (e) {
         console.error(e);
         speak("AI is not connected right now. Try again.");
+      } finally {
+        setMicBusy(false);
       }
     };
 
-    recognition.onerror = (event) => {
-      console.error("Error occurred: ", event.error);
-      speak("Mic error. Try again.");
+    r.onerror = (event) => {
+      console.error("SpeechRecognition error:", event?.error, event);
+
+      const code = event?.error || "unknown";
+
+      if (code === "not-allowed" || code === "service-not-allowed") {
+        speak("Mic permission is blocked. Allow it in site settings.");
+      } else if (code === "audio-capture") {
+        speak("No microphone input detected.");
+      } else if (code === "no-speech") {
+        speak("I didn’t hear you. Try again.");
+      } else if (code === "network") {
+        speak("Speech service/network issue. Try again.");
+      } else if (code === "aborted") {
+        // ignore
+      } else {
+        speak("Mic error. Try again.");
+      }
     };
+
+    r.onend = () => {
+      // clean end
+      try {
+        recognitionRef.current = null;
+      } catch {}
+    };
+
+    return r;
   };
+
+  const handleMicClick = () => {
+    if (micBusy) return;
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      alert("Speech recognition not supported in this browser!");
+      return;
+    }
+
+    // stop old run if somehow still alive
+    try {
+      recognitionRef.current?.stop?.();
+    } catch {}
+
+    const r = buildRecognition();
+    recognitionRef.current = r;
+
+    try {
+      r.start(); // must be from click (this is)
+    } catch (e) {
+      console.error("Failed to start recognition:", e);
+      speak("Mic failed to start. Try again.");
+      recognitionRef.current = null;
+    }
+  };
+
   console.log("API_BASE AT RUNTIME =", API_BASE);
 
   return (
@@ -121,9 +184,7 @@ export default function MHome() {
                     {slides.map((_, dotIndex) => (
                       <div
                         key={dotIndex}
-                        className={`rect ${
-                          dotIndex === current ? "active" : ""
-                        }`}
+                        className={`rect ${dotIndex === current ? "active" : ""}`}
                       ></div>
                     ))}
                   </div>
@@ -133,11 +194,7 @@ export default function MHome() {
                   src={slide.img}
                   alt="slide"
                   className={`slide-image ${
-                    index === 0
-                      ? "img-snoopy"
-                      : index === 1
-                      ? "img-two"
-                      : "img-three"
+                    index === 0 ? "img-snoopy" : index === 1 ? "img-two" : "img-three"
                   }`}
                 />
               </div>
@@ -163,7 +220,13 @@ export default function MHome() {
             />
             <span className="search-icon">🔍︎</span>
 
-            <FaMicrophone size={20} className="mic-icon" onClick={handleMicClick} />
+            <FaMicrophone
+              size={20}
+              className="mic-icon"
+              onClick={handleMicClick}
+              style={{ opacity: micBusy ? 0.6 : 1, pointerEvents: micBusy ? "none" : "auto" }}
+              title={micBusy ? "Working…" : "Tap to speak"}
+            />
           </div>
         </div>
 
