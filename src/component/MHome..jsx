@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { FaMicrophone } from "react-icons/fa";
 import "../styles/mhome.css";
 import snoopy from "../photos/Snoopy.png";
@@ -38,63 +38,68 @@ export default function MHome() {
   const [busy, setBusy] = useState(false);
 
   const recognitionRef = useRef(null);
+  const isSpeakingRef = useRef(false);
   const silenceTimerRef = useRef(null);
 
   const nextSlide = () => setCurrent((prev) => (prev + 1) % slides.length);
-  const prevSlide = () => setCurrent((prev) => (prev - 1 + slides.length) % slides.length);
+  const prevSlide = () =>
+    setCurrent((prev) => (prev - 1 + slides.length) % slides.length);
+
+  useEffect(() => {
+    // preload voices on some browsers
+    if (window.speechSynthesis) window.speechSynthesis.getVoices();
+  }, []);
 
   const speak = (text) => {
     if (!window.speechSynthesis || !text) return;
+
+    // stop mic while speaking (prevents weird no-speech loops)
+    try {
+      recognitionRef.current?.stop?.();
+    } catch {}
+
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.rate = 1;
     u.pitch = 1;
+
+    u.onstart = () => (isSpeakingRef.current = true);
+    u.onend = () => (isSpeakingRef.current = false);
+    u.onerror = () => (isSpeakingRef.current = false);
+
     window.speechSynthesis.speak(u);
   };
 
-  const warmUpMic = async () => {
-    // This is the real fix for instant "no-speech" on many systems
+  const ensureMicPermission = async () => {
+    // This forces the browser to properly grant mic access (fixes a LOT of no-speech issues)
     if (!navigator.mediaDevices?.getUserMedia) return;
+
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    // stop immediately (we only use it to force mic permission + device activation)
     stream.getTracks().forEach((t) => t.stop());
   };
 
-  const getRecognition = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return null;
+  const buildRecognition = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
 
-    const r = new SpeechRecognition();
+    const r = new SR();
     r.lang = "en-US";
     r.interimResults = false;
-    r.continuous = false; // important: less buggy than continuous for simple “ask once”
+    r.continuous = false; // ✅ more stable for “ask once”
     r.maxAlternatives = 1;
-
-    r.onstart = () => {
-      setListening(true);
-      // auto-stop if user stays silent too long
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = setTimeout(() => {
-        try { r.stop(); } catch {}
-      }, 8000);
-    };
-
-    r.onaudiostart = () => {
-      // reset the silence timer once audio starts flowing
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = setTimeout(() => {
-        try { r.stop(); } catch {}
-      }, 8000);
-    };
 
     r.onresult = async (event) => {
       clearTimeout(silenceTimerRef.current);
 
       const transcript = (event.results?.[0]?.[0]?.transcript || "").trim();
+
       setListening(false);
+      try {
+        r.stop();
+      } catch {}
 
       if (!transcript) {
-        speak("I didn’t hear you. Try again.");
+        speak("I didn’t catch that. Try again.");
         return;
       }
 
@@ -111,19 +116,24 @@ export default function MHome() {
           }),
         });
 
-        const raw = await res.text().catch(() => "");
+        const text = await res.text().catch(() => "");
         if (!res.ok) {
-          console.error("AI error:", res.status, raw);
-          speak("AI isn’t reachable right now.");
+          console.error("AI error:", res.status, text);
+          speak("AI is not connected right now. Try again.");
           return;
         }
 
         let data;
-        try { data = JSON.parse(raw); } catch { data = { reply: raw }; }
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { reply: text };
+        }
+
         speak(data.reply || "I didn’t get a reply.");
       } catch (e) {
         console.error("AI request failed:", e);
-        speak("AI isn’t reachable right now.");
+        speak("AI is not connected right now. Try again.");
       } finally {
         setBusy(false);
       }
@@ -131,26 +141,35 @@ export default function MHome() {
 
     r.onerror = (event) => {
       clearTimeout(silenceTimerRef.current);
-      setListening(false);
 
-      // THIS is your exact error:
-      if (event.error === "no-speech") {
-        // do NOT treat as “mic broken”
-        speak("I didn’t hear you. Try again.");
+      const err = event?.error;
+      console.error("SpeechRecognition error:", err);
+
+      // ✅ DO NOT treat no-speech like “mic broken”
+      if (err === "no-speech") {
+        setListening(false);
+        speak("I didn’t hear you. Try again, a bit closer to the mic.");
         return;
       }
 
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+      if (err === "aborted") {
+        setListening(false);
+        return;
+      }
+
+      if (err === "not-allowed" || err === "service-not-allowed") {
+        setListening(false);
         speak("Mic permission is blocked. Allow it in site settings.");
         return;
       }
 
-      if (event.error === "audio-capture") {
-        speak("No microphone detected. Check your input device.");
+      if (err === "audio-capture") {
+        setListening(false);
+        speak("No microphone input detected.");
         return;
       }
 
-      console.error("SpeechRecognition error:", event.error, event);
+      setListening(false);
       speak("Mic error. Try again.");
     };
 
@@ -162,36 +181,69 @@ export default function MHome() {
     return r;
   };
 
-  const handleMicClick = async () => {
+  const startListening = async () => {
     if (busy) return;
 
-    if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
       alert("Speech recognition not supported in this browser!");
       return;
     }
 
-    // stop any old recognition instance cleanly
-    try { recognitionRef.current?.stop?.(); } catch {}
+    // stop any TTS before listening
+    try {
+      window.speechSynthesis?.cancel?.();
+    } catch {}
 
     try {
-      await warmUpMic(); // ✅ IMPORTANT
+      await ensureMicPermission();
     } catch (e) {
-      console.error("Mic warm-up failed:", e);
-      speak("Mic permission problem. Check site settings.");
+      console.error("getUserMedia permission failed:", e);
+      speak("Mic permission is blocked. Allow it in site settings.");
       return;
     }
 
-    const r = getRecognition();
-    if (!r) return;
+    if (!recognitionRef.current) {
+      recognitionRef.current = buildRecognition();
+    }
 
-    recognitionRef.current = r;
+    const r = recognitionRef.current;
+    if (!r) {
+      alert("Speech recognition not supported in this browser!");
+      return;
+    }
+
+    setListening(true);
+
+    // If user doesn’t speak quickly, we stop and prompt (prevents endless “no-speech” spam)
+    clearTimeout(silenceTimerRef.current);
+    silenceTimerRef.current = setTimeout(() => {
+      try {
+        r.stop();
+      } catch {}
+      setListening(false);
+      speak("I’m listening… say something 😭");
+    }, 9000);
 
     try {
       r.start();
     } catch (e) {
-      // InvalidStateError if spam-clicked
-      console.warn("Recognition start failed:", e);
+      // InvalidStateError happens if start is called twice
+      console.warn("Recognition start ignored:", e?.message);
     }
+  };
+
+  const stopListening = () => {
+    setListening(false);
+    clearTimeout(silenceTimerRef.current);
+    try {
+      recognitionRef.current?.stop?.();
+    } catch {}
+  };
+
+  const handleMicClick = () => {
+    if (listening) stopListening();
+    else startListening();
   };
 
   console.log("API_BASE AT RUNTIME =", API_BASE);
@@ -248,7 +300,7 @@ export default function MHome() {
           <div className="search-wrapper">
             <input
               type="text"
-              placeholder={listening ? "Listening…" : "Search for recipes..."}
+              placeholder="Search for recipes..."
               className="search-bar"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -259,7 +311,7 @@ export default function MHome() {
               size={20}
               className="mic-icon"
               onClick={handleMicClick}
-              title={busy ? "Working…" : listening ? "Listening…" : "Ask AI"}
+              title={busy ? "Working..." : listening ? "Listening... click to stop" : "Tap to speak"}
               style={{ opacity: busy ? 0.6 : 1 }}
             />
           </div>
