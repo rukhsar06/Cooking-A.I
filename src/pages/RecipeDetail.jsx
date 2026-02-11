@@ -21,10 +21,10 @@ export default function RecipeDetail() {
   const [listening, setListening] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // --------- TTS ----------
   const speak = (text) => {
     if (!window.speechSynthesis || !text) return;
 
+    // stop mic while speaking
     try {
       recognitionRef.current?.stop?.();
     } catch {}
@@ -39,9 +39,6 @@ export default function RecipeDetail() {
     };
     u.onend = () => {
       isSpeakingRef.current = false;
-      if (isListeningRef.current) {
-        setTimeout(() => startRecognitionSafe(), 250);
-      }
     };
     u.onerror = () => {
       isSpeakingRef.current = false;
@@ -50,28 +47,25 @@ export default function RecipeDetail() {
     window.speechSynthesis.speak(u);
   };
 
-  // --------- build recognition ONCE ----------
   const buildRecognition = () => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return null;
 
     const r = new SpeechRecognition();
     r.lang = "en-US";
-    r.interimResults = false;   // ✅ less chaos
-    r.continuous = false;       // ✅ one question then stop
+    r.interimResults = false;
+    r.continuous = false; // ✅ single question is more stable than continuous here
     r.maxAlternatives = 1;
 
     r.onresult = async (event) => {
-      const transcript = (event?.results?.[0]?.[0]?.transcript || "").trim();
+      const transcript = (event.results?.[0]?.[0]?.transcript || "").trim();
+      isListeningRef.current = false;
+      setListening(false);
+
       if (!transcript) {
         speak("I didn’t hear you. Try again.");
         return;
       }
-
-      isListeningRef.current = false;
-      setListening(false);
 
       if (!recipe) {
         speak("Recipe is not loaded yet.");
@@ -100,18 +94,18 @@ ${recipe?.steps || recipe?.instructions || ""}
           }),
         });
 
-        const raw = await res.text().catch(() => "");
+        const text = await res.text().catch(() => "");
         if (!res.ok) {
-          console.error("AI error:", res.status, raw);
+          console.error("AI error:", res.status, text);
           speak("AI isn’t reachable right now.");
           return;
         }
 
         let data;
         try {
-          data = JSON.parse(raw);
+          data = JSON.parse(text);
         } catch {
-          data = { reply: raw };
+          data = { reply: text };
         }
 
         speak(data.reply || "I didn’t get a reply.");
@@ -124,27 +118,29 @@ ${recipe?.steps || recipe?.instructions || ""}
     };
 
     r.onerror = (event) => {
-      console.error("Mic error:", event?.error, event);
+      console.error("Mic error:", event.error);
 
-      const code = event?.error || "unknown";
-
-      if (code === "no-speech") {
+      // ✅ treat no-speech as normal user silence
+      if (event.error === "no-speech") {
+        isListeningRef.current = false;
+        setListening(false);
         speak("I didn’t hear you. Try again.");
         return;
       }
-      if (code === "aborted") return;
 
-      if (code === "not-allowed" || code === "service-not-allowed") {
-        speak("Mic permission is blocked. Allow it in site settings.");
+      if (event.error === "aborted") return;
+
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
         isListeningRef.current = false;
         setListening(false);
+        speak("Mic permission is blocked. Allow it in site settings.");
         return;
       }
 
-      if (code === "audio-capture") {
-        speak("No microphone input detected.");
+      if (event.error === "audio-capture") {
         isListeningRef.current = false;
         setListening(false);
+        speak("No microphone input detected.");
         return;
       }
 
@@ -154,7 +150,8 @@ ${recipe?.steps || recipe?.instructions || ""}
     };
 
     r.onend = () => {
-      // nothing - we stop after one question
+      // just sync UI
+      if (!isListeningRef.current) setListening(false);
     };
 
     return r;
@@ -168,6 +165,7 @@ ${recipe?.steps || recipe?.instructions || ""}
       recognitionRef.current = buildRecognition();
     }
     const r = recognitionRef.current;
+
     if (!r) {
       alert("Speech recognition not supported in this browser!");
       isListeningRef.current = false;
@@ -178,7 +176,7 @@ ${recipe?.steps || recipe?.instructions || ""}
     try {
       r.start();
     } catch {
-      // ignore InvalidStateError spam
+      // ignore InvalidStateError
     }
   };
 
@@ -192,6 +190,9 @@ ${recipe?.steps || recipe?.instructions || ""}
 
   const handleAiMic = () => {
     if (busy) return;
+
+    // stop any speaking before listening
+    window.speechSynthesis?.cancel?.();
 
     if (listening) {
       stopRecognitionSafe();
@@ -208,7 +209,7 @@ ${recipe?.steps || recipe?.instructions || ""}
     startRecognitionSafe();
   };
 
-  // --------- track history & views ----------
+  // track history & views
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("user") || "null");
     const token = user?.token;
@@ -223,7 +224,7 @@ ${recipe?.steps || recipe?.instructions || ""}
     fetch(`${API_BASE}/api/feed/${id}/view`, { method: "POST" }).catch(() => {});
   }, [id]);
 
-  // --------- fetch recipe ----------
+  // fetch recipe
   useEffect(() => {
     setLoading(true);
 
@@ -246,6 +247,7 @@ ${recipe?.steps || recipe?.instructions || ""}
       });
   }, [id]);
 
+  // cleanup
   useEffect(() => {
     return () => {
       try {
