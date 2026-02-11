@@ -47,9 +47,11 @@ export default function FoodCard({
       }
 
       if (!res.ok) {
-        console.error("Like failed:", res.status);
-        return;
-      }
+  const msg = await res.text().catch(() => "");
+  console.error("Like failed:", res.status, msg);
+  return;
+}
+
 
       const data = await res.json();
       setLiked(!!data.liked);

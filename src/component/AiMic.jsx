@@ -16,11 +16,14 @@ export default function AiMic({ recipeTitle = "", contextText = "" }) {
     if (!window.speechSynthesis) return;
 
     window.speechSynthesis.cancel();
+
     const u = new SpeechSynthesisUtterance(text);
 
     const voices = window.speechSynthesis.getVoices() || [];
     const preferred =
-      voices.find((v) => /en/i.test(v.lang) && /female|Google|Siri/i.test(v.name)) ||
+      voices.find(
+        (v) => /en/i.test(v.lang) && /female|Google|Siri/i.test(v.name)
+      ) ||
       voices.find((v) => /en/i.test(v.lang)) ||
       voices[0];
 
@@ -79,14 +82,30 @@ export default function AiMic({ recipeTitle = "", contextText = "" }) {
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
+    // ✅ make Chrome less annoying
+    recognition.continuous = false;
+    recognition.onspeechstart = () => {
+      // helpful for debugging
+      // console.log("Speech detected");
+    };
+
     setListening(true);
-    recognition.start();
+
+    try {
+      recognition.start();
+    } catch (e) {
+      console.error("Recognition start failed:", e);
+      setListening(false);
+      speak("Mic couldn’t start. Try again.");
+      return;
+    }
 
     recognition.onresult = async (event) => {
       const transcript = event.results?.[0]?.[0]?.transcript || "";
       setListening(false);
 
       if (!transcript.trim()) {
+        // Chrome sometimes gives empty transcript
         speak("I didn’t hear you. Try again.");
         return;
       }
@@ -107,13 +126,18 @@ export default function AiMic({ recipeTitle = "", contextText = "" }) {
       console.error("STT error:", event.error);
       setListening(false);
 
+      // ✅ Chrome false-positive: happens even when mic works
       if (event.error === "no-speech") {
-        speak("I didn’t hear you. Try again.");
+        console.warn("No speech detected (Chrome quirk)");
         return;
       }
+
       if (event.error === "aborted") return;
 
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+      if (
+        event.error === "not-allowed" ||
+        event.error === "service-not-allowed"
+      ) {
         speak("Mic permission is blocked. Allow it in site settings.");
         return;
       }
@@ -121,7 +145,9 @@ export default function AiMic({ recipeTitle = "", contextText = "" }) {
       speak("Mic error. Try again.");
     };
 
-    recognition.onend = () => setListening(false);
+    recognition.onend = () => {
+      setListening(false);
+    };
   };
 
   const handleClick = () => {

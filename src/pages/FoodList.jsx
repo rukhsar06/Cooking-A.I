@@ -45,7 +45,12 @@ export default function FoodList({ query = "" }) {
     try {
       const res = await fetch(buildUrl(pageToFetch));
 
-      if (!res.ok) throw new Error(`Failed to load: ${res.status}`);
+     if (!res.ok) {
+  const msg = await res.text().catch(() => "");
+  console.error("Like failed:", res.status, msg);
+  return;
+}
+
 
       const data = await res.json();
 

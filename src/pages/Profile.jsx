@@ -1,16 +1,16 @@
 import "../styles/Profile.css";
-import React, { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useRef, useState, useCallback } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import Wonwoo from "../photos/Wonwoo.jpeg";
 import { API_BASE } from "../config";
 
 export default function Profile() {
   const navigate = useNavigate();
+  const location = useLocation();
   const fileRef = useRef(null);
 
   const storedUser = JSON.parse(localStorage.getItem("user") || "null");
   const [user, setUser] = useState(storedUser);
-  console.log("API_BASE AT RUNTIME =", API_BASE);
 
   const [likedList, setLikedList] = useState([]);
   const [historyList, setHistoryList] = useState([]);
@@ -18,27 +18,55 @@ export default function Profile() {
   const likedImages = likedList.slice(0, 4);
   const historyImages = historyList.slice(0, 6);
 
-  useEffect(() => {
-    if (!user?.token) {
+  const fetchStuff = useCallback(() => {
+    const latestUser = JSON.parse(localStorage.getItem("user") || "null");
+    setUser(latestUser);
+
+    if (!latestUser?.token) {
       setLikedList([]);
       setHistoryList([]);
       return;
     }
 
     fetch(`${API_BASE}/api/likes`, {
-      headers: { Authorization: `Bearer ${user.token}` },
+      headers: { Authorization: `Bearer ${latestUser.token}` },
     })
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => setLikedList(data || []))
       .catch(() => setLikedList([]));
 
     fetch(`${API_BASE}/api/history`, {
-      headers: { Authorization: `Bearer ${user.token}` },
+      headers: { Authorization: `Bearer ${latestUser.token}` },
     })
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => setHistoryList(data || []))
       .catch(() => setHistoryList([]));
-  }, [user?.token]);
+  }, []);
+
+  // ✅ initial + focus/visibility
+  useEffect(() => {
+    fetchStuff();
+
+    const onFocus = () => fetchStuff();
+    window.addEventListener("focus", onFocus);
+
+    const onVis = () => {
+      if (document.visibilityState === "visible") fetchStuff();
+    };
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [fetchStuff]);
+
+  // ✅ IMPORTANT: refresh when route becomes /profile again
+  useEffect(() => {
+    if (location.pathname === "/profile") {
+      fetchStuff();
+    }
+  }, [location.pathname, fetchStuff]);
 
   const handleAvatarChange = (e) => {
     const file = e.target.files[0];
@@ -51,7 +79,7 @@ export default function Profile() {
 
     const reader = new FileReader();
     reader.onload = () => {
-      const updatedUser = { ...user, avatar: reader.result };
+      const updatedUser = { ...(user || {}), avatar: reader.result };
       setUser(updatedUser);
       localStorage.setItem("user", JSON.stringify(updatedUser));
     };
