@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import "../styles/login.css";
 import cherry from "../photos/cherry.jpeg";
 import { useNavigate, Link } from "react-router-dom";
+import { API_BASE } from "../config";
 
 function PasswordInput({ value, onChange, placeholder }) {
   const [visible, setVisible] = useState(false);
@@ -39,11 +40,9 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:8080/api/auth/login", {
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
 
@@ -55,19 +54,15 @@ function LoginForm() {
 
       const data = await res.json();
 
-      // 🔥 STORE FULL USER OBJECT (THIS WAS MISSING BEFORE)
       const user = {
         id: data.id,
         username: data.username,
         email: data.email,
         token: data.token,
-        avatar: "/avatars/default.png", // optional
+        avatar: "/avatars/default.png",
       };
 
       localStorage.setItem("user", JSON.stringify(user));
-
-      console.log("LOGGED IN USER:", user);
-
       navigate("/Mhome");
     } catch (err) {
       console.error("Login error:", err);

@@ -5,6 +5,7 @@ import snoopy from "../photos/Snoopy.png";
 import slide2 from "../photos/slide2.png";
 import slide3 from "../photos/slide3.png";
 import FoodList from "../pages/FoodList.jsx";
+import { API_BASE } from "../config";
 
 export default function MHome() {
   const slides = [
@@ -34,7 +35,8 @@ export default function MHome() {
   const [query, setQuery] = useState("");
 
   const nextSlide = () => setCurrent((prev) => (prev + 1) % slides.length);
-  const prevSlide = () => setCurrent((prev) => (prev - 1 + slides.length) % slides.length);
+  const prevSlide = () =>
+    setCurrent((prev) => (prev - 1 + slides.length) % slides.length);
 
   const speak = (text) => {
     if (!window.speechSynthesis) return;
@@ -45,14 +47,14 @@ export default function MHome() {
     window.speechSynthesis.speak(u);
   };
 
-  // ✅ ONE MIC: AI voice guide (talk back)
   const handleMicClick = () => {
     if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
       alert("Speech recognition not supported in this browser!");
       return;
     }
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
     recognition.lang = "en-US";
     recognition.interimResults = false;
@@ -64,7 +66,7 @@ export default function MHome() {
       const transcript = event.results[0][0].transcript;
 
       try {
-        const res = await fetch("http://localhost:8080/api/ai/guide", {
+        const res = await fetch(`${API_BASE}/api/ai/guide`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -75,14 +77,17 @@ export default function MHome() {
           }),
         });
 
-        // if billing not done → this will likely fail. We handle it.
-        if (!res.ok) throw new Error("AI not available");
+        if (!res.ok) {
+          const msg = await res.text().catch(() => "");
+          console.error("AI error:", res.status, msg);
+          throw new Error("AI not available");
+        }
 
-        const data = await res.json(); // { reply: "..." }
+        const data = await res.json();
         speak(data.reply || "I didn’t get a reply.");
       } catch (e) {
         console.error(e);
-        speak("AI is not connected right now. We’ll enable it later.");
+        speak("AI is not connected right now. Try again.");
       }
     };
 
@@ -115,7 +120,9 @@ export default function MHome() {
                     {slides.map((_, dotIndex) => (
                       <div
                         key={dotIndex}
-                        className={`rect ${dotIndex === current ? "active" : ""}`}
+                        className={`rect ${
+                          dotIndex === current ? "active" : ""
+                        }`}
                       ></div>
                     ))}
                   </div>
@@ -125,7 +132,11 @@ export default function MHome() {
                   src={slide.img}
                   alt="slide"
                   className={`slide-image ${
-                    index === 0 ? "img-snoopy" : index === 1 ? "img-two" : "img-three"
+                    index === 0
+                      ? "img-snoopy"
+                      : index === 1
+                      ? "img-two"
+                      : "img-three"
                   }`}
                 />
               </div>
@@ -140,7 +151,6 @@ export default function MHome() {
           ❯
         </button>
 
-        {/* ✅ SEARCH BAR */}
         <div className="search-container">
           <div className="search-wrapper">
             <input
@@ -152,7 +162,6 @@ export default function MHome() {
             />
             <span className="search-icon">🔍︎</span>
 
-            {/* ✅ same mic icon, now AI talk-back */}
             <FaMicrophone size={20} className="mic-icon" onClick={handleMicClick} />
           </div>
         </div>

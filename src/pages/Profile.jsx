@@ -2,19 +2,18 @@ import "../styles/Profile.css";
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Wonwoo from "../photos/Wonwoo.jpeg";
+import { API_BASE } from "../config";
 
 export default function Profile() {
   const navigate = useNavigate();
   const fileRef = useRef(null);
 
-  const storedUser = JSON.parse(localStorage.getItem("user")) || null;
+  const storedUser = JSON.parse(localStorage.getItem("user") || "null");
   const [user, setUser] = useState(storedUser);
 
-  // ✅ BACKEND LIKES + HISTORY (Pinterest mode)
   const [likedList, setLikedList] = useState([]);
   const [historyList, setHistoryList] = useState([]);
 
-  // show max images in collage
   const likedImages = likedList.slice(0, 4);
   const historyImages = historyList.slice(0, 6);
 
@@ -25,16 +24,14 @@ export default function Profile() {
       return;
     }
 
-    // likes
-    fetch("http://localhost:8080/api/likes", {
+    fetch(`${API_BASE}/api/likes`, {
       headers: { Authorization: `Bearer ${user.token}` },
     })
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => setLikedList(data || []))
       .catch(() => setLikedList([]));
 
-    // history
-    fetch("http://localhost:8080/api/history", {
+    fetch(`${API_BASE}/api/history`, {
       headers: { Authorization: `Bearer ${user.token}` },
     })
       .then((res) => (res.ok ? res.json() : []))
@@ -60,7 +57,6 @@ export default function Profile() {
     reader.readAsDataURL(file);
   };
 
-  // if no user logged in
   if (!user) {
     return (
       <div className="profile">
@@ -99,7 +95,6 @@ export default function Profile() {
         <p className="p-name">{user?.username}</p>
       </div>
 
-      {/* ✅ HISTORY (backend) */}
       <h2 className="his-p">Your History</h2>
       <div className="history-collage" onClick={() => navigate("/history")}>
         {historyImages.length === 0 ? (
@@ -116,7 +111,6 @@ export default function Profile() {
         )}
       </div>
 
-      {/* ✅ LIKED (backend) */}
       <h2 className="like-p">Your Liked</h2>
       <div className="liked-collage" onClick={() => navigate("/liked")}>
         {likedImages.length === 0 ? (

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import "./Register.css";
 import coffee from "./coffee.jpeg";
 import { Link, useNavigate } from "react-router-dom";
+import { API_BASE } from "../config";
 
 function PasswordInput({ placeholder, value, onChange }) {
   const [visible, setVisible] = useState(false);
@@ -37,7 +38,6 @@ function RegisterForm() {
   const handleRegister = async () => {
     setError("");
 
-    // Gmail / Yahoo rule
     const emailPattern = /^[a-zA-Z0-9._%+-]+@(gmail\.com|yahoo\.com)$/;
     if (!emailPattern.test(email)) {
       setError("Only Gmail or Yahoo accounts allowed");
@@ -55,17 +55,12 @@ function RegisterForm() {
     }
 
     try {
-      const res = await fetch("http://localhost:8080/api/auth/register", {
+      const res = await fetch(`${API_BASE}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username,
-          email,
-          password,
-        }),
+        body: JSON.stringify({ username, email, password }),
       });
 
-      // If backend throws error, try to read JSON first, else text
       if (!res.ok) {
         let msg = "Registration failed";
         try {
@@ -80,12 +75,10 @@ function RegisterForm() {
 
       const userData = await res.json();
 
-      // 👇 frontend-only avatar logic
       const avatar = email.includes("gmail.com")
         ? "/avatars/gmail.png"
         : "/avatars/yahoo.png";
 
-      // ✅ IMPORTANT: store token + id + username/email
       localStorage.setItem(
         "user",
         JSON.stringify({
@@ -97,7 +90,6 @@ function RegisterForm() {
         })
       );
 
-      // registration success → go home
       navigate("/Mhome");
     } catch (err) {
       setError("Server not responding");
@@ -110,7 +102,6 @@ function RegisterForm() {
         <div className="register-container">
           <h1 className="title">Create Your Account</h1>
 
-          {/* USERNAME */}
           <input
             type="text"
             className="username"
@@ -119,7 +110,6 @@ function RegisterForm() {
             onChange={(e) => setUsername(e.target.value)}
           />
 
-          {/* EMAIL */}
           <input
             type="text"
             className="email"
@@ -128,7 +118,6 @@ function RegisterForm() {
             onChange={(e) => setEmail(e.target.value)}
           />
 
-          {/* PASSWORD */}
           <PasswordInput
             placeholder="Enter Your Password"
             value={password}

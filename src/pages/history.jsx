@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import "../styles/history.css";
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from "../config";
 
 const FALLBACK_IMG =
   "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=800&q=80";
@@ -12,7 +13,7 @@ export default function History() {
   const [openMenuId, setOpenMenuId] = useState(null);
 
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("user"));
+    const user = JSON.parse(localStorage.getItem("user") || "null");
     const token = user?.token;
 
     if (!token) {
@@ -20,7 +21,7 @@ export default function History() {
       return;
     }
 
-    fetch("http://localhost:8080/api/history", {
+    fetch(`${API_BASE}/api/history`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => {
@@ -39,7 +40,7 @@ export default function History() {
   }, [navigate]);
 
   const removeHistory = async (recipeId) => {
-    const user = JSON.parse(localStorage.getItem("user"));
+    const user = JSON.parse(localStorage.getItem("user") || "null");
     const token = user?.token;
 
     if (!token) {
@@ -47,7 +48,7 @@ export default function History() {
       return;
     }
 
-    const res = await fetch(`http://localhost:8080/api/history/${recipeId}`, {
+    const res = await fetch(`${API_BASE}/api/history/${recipeId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -84,7 +85,6 @@ export default function History() {
               onClick={() => navigate(`/recipe/${item.id}`)}
               style={{ cursor: "pointer", position: "relative" }}
             >
-              {/* menu button */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import "../styles/liked.css";
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from "../config";
 
 const FALLBACK_IMG =
   "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=800&q=80";
@@ -12,7 +13,7 @@ export default function Liked() {
   const [openMenuId, setOpenMenuId] = useState(null);
 
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("user"));
+    const user = JSON.parse(localStorage.getItem("user") || "null");
     const token = user?.token;
 
     if (!token) {
@@ -20,7 +21,7 @@ export default function Liked() {
       return;
     }
 
-    fetch("http://localhost:8080/api/likes", {
+    fetch(`${API_BASE}/api/likes`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => {
@@ -42,7 +43,7 @@ export default function Liked() {
   }, [navigate]);
 
   const removeLike = async (recipeId) => {
-    const user = JSON.parse(localStorage.getItem("user"));
+    const user = JSON.parse(localStorage.getItem("user") || "null");
     const token = user?.token;
 
     if (!token) {
@@ -50,8 +51,8 @@ export default function Liked() {
       return;
     }
 
-    const res = await fetch(`http://localhost:8080/api/likes/${recipeId}`, {
-      method: "POST", // toggle
+    const res = await fetch(`${API_BASE}/api/likes/${recipeId}`, {
+      method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -65,7 +66,6 @@ export default function Liked() {
       return;
     }
 
-    // remove from UI
     setLikedList((prev) => prev.filter((x) => x.id !== recipeId));
     setOpenMenuId(null);
   };
@@ -86,7 +86,6 @@ export default function Liked() {
             onClick={() => navigate(`/recipe/${item.id}`)}
             style={{ position: "relative" }}
           >
-            {/* menu button */}
             <button
               onClick={(e) => {
                 e.stopPropagation();

@@ -2,9 +2,11 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { FaMicrophone } from "react-icons/fa";
 import "../styles/RecipeDetail.css";
+import { API_BASE } from "../config";
 
 const FALLBACK_IMG =
   "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=800&q=80";
+  console.log("API_BASE AT RUNTIME =", API_BASE);
 
 export default function RecipeDetail() {
   const { id } = useParams();
@@ -13,29 +15,30 @@ export default function RecipeDetail() {
   const [recipe, setRecipe] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // history + view tracking
+  // ✅ history protected, view public
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("user"));
+    const user = JSON.parse(localStorage.getItem("user") || "null");
     const token = user?.token;
 
+    // history requires login
     if (token) {
-      fetch(`http://localhost:8080/api/history/${id}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {});
-
-      fetch(`http://localhost:8080/api/feed/${id}/view`, {
+      fetch(`${API_BASE}/api/history/${id}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {});
     }
+
+    // view is public -> send NO token
+    fetch(`${API_BASE}/api/feed/${id}/view`, {
+      method: "POST",
+    }).catch(() => {});
   }, [id]);
 
-  // fetch PUBLIC recipe details
+  // ✅ public recipe details
   useEffect(() => {
     setLoading(true);
 
-    fetch(`http://localhost:8080/api/recipes/public/${id}`)
+    fetch(`${API_BASE}/api/recipes/public/${id}`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load recipe");
         return res.json();
@@ -66,7 +69,13 @@ export default function RecipeDetail() {
       return;
     }
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!recipe) {
+      speak("Recipe is not loaded yet.");
+      return;
+    }
+
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
     recognition.lang = "en-US";
     recognition.interimResults = false;
@@ -88,7 +97,7 @@ ${recipe?.steps || recipe?.instructions || ""}
       `.trim();
 
       try {
-        const res = await fetch("http://localhost:8080/api/ai/guide", {
+        const res = await fetch(`${API_BASE}/api/ai/guide`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -98,18 +107,22 @@ ${recipe?.steps || recipe?.instructions || ""}
           }),
         });
 
-        if (!res.ok) throw new Error("AI not available");
+        if (!res.ok) {
+          const msg = await res.text().catch(() => "");
+          console.error("AI error status:", res.status, msg);
+          throw new Error(`AI error ${res.status}`);
+        }
 
         const data = await res.json();
         speak(data.reply || "I didn’t get a reply.");
       } catch (e) {
         console.error(e);
-        speak("AI is not connected right now. We’ll enable it later.");
+        speak("I couldn’t reach the AI service. Try again.");
       }
     };
 
     recognition.onerror = (event) => {
-      console.error("Error occurred: ", event.error);
+      console.error("Mic error:", event.error);
       speak("Mic error. Try again.");
     };
   };
@@ -133,7 +146,6 @@ ${recipe?.steps || recipe?.instructions || ""}
             ← Back
           </button>
 
-          {/* (optional) you can keep this text or remove */}
           <div style={{ opacity: 0.7, fontWeight: 600 }}>
             Ask AI “what’s next?” / “how long to cook?”
           </div>
@@ -166,7 +178,6 @@ ${recipe?.steps || recipe?.instructions || ""}
         </section>
       </div>
 
-      {/* ✅ FLOATING MIC (you WILL see it) */}
       <button className="ai-mic-float" onClick={handleAiMic} title="Ask AI">
         <FaMicrophone size={22} />
       </button>

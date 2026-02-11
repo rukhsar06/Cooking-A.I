@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
 import "../styles/FoodCard.css";
+import { API_BASE } from "../config";
 
 const FALLBACK_IMG =
   "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=800&q=80";
@@ -16,18 +17,16 @@ export default function FoodCard({
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef(null);
 
-  // backend-driven state
   const [liked, setLiked] = useState(!!likedByMe);
   const [likesCount, setLikesCount] = useState(likes);
 
-  // keep state in sync with parent updates
   useEffect(() => setLiked(!!likedByMe), [likedByMe]);
   useEffect(() => setLikesCount(likes ?? 0), [likes]);
 
   const handleLikeClick = async (e) => {
     e.preventDefault();
 
-    const user = JSON.parse(localStorage.getItem("user"));
+    const user = JSON.parse(localStorage.getItem("user") || "null");
     const token = user?.token;
 
     if (!token) {
@@ -36,11 +35,9 @@ export default function FoodCard({
     }
 
     try {
-      const res = await fetch(`http://localhost:8080/api/likes/${id}`, {
+      const res = await fetch(`${API_BASE}/api/likes/${id}`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (res.status === 401) {
@@ -81,16 +78,13 @@ export default function FoodCard({
 
   return (
     <div className="card-wrapper" ref={menuRef}>
-      {/* ✅ ID-based routing */}
       <Link to={`/recipe/${id}`} className="foodLink">
         <div className="card">
           <img
             src={imageUrl || FALLBACK_IMG}
             alt={title}
             loading="lazy"
-            onError={(e) => {
-              e.currentTarget.src = FALLBACK_IMG;
-            }}
+            onError={(e) => (e.currentTarget.src = FALLBACK_IMG)}
           />
 
           <div className="card-title-wrapper">
