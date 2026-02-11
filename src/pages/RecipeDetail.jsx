@@ -14,77 +14,77 @@ export default function RecipeDetail() {
   const [recipe, setRecipe] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const recognitionRef = useRef(null);
+  const interruptRecRef = useRef(null); // listens while TTS speaking for "shut up"
+  const isListeningRef = useRef(false);
+  const isSpeakingRef = useRef(false);
+
   const [listening, setListening] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const recognitionRef = useRef(null);
+  const STOP_WORDS = [
+    "shut up",
+    "stop",
+    "cancel",
+    "quiet",
+    "enough",
+    "stop talking",
+    "be quiet",
+  ];
 
-  // --------- TTS ----------
-  const speak = (text) => {
-    if (!window.speechSynthesis || !text) return;
+  // ---------------- STOP TTS ----------------
+  const stopSpeaking = () => {
     try {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.rate = 1;
-      u.pitch = 1;
-      window.speechSynthesis.speak(u);
+      window.speechSynthesis?.cancel?.();
     } catch {}
+
+    isSpeakingRef.current = false;
+
+    // stop interrupt listener too
+    try {
+      interruptRecRef.current?.stop?.();
+    } catch {}
+    interruptRecRef.current = null;
   };
 
-  const stopRecognition = () => {
-    try {
-      recognitionRef.current?.abort?.();
-    } catch {}
-    try {
-      recognitionRef.current?.stop?.();
-    } catch {}
-    recognitionRef.current = null;
-    setListening(false);
-  };
+  // ---------------- MAIN SPEECH RECOGNITION (ASK AI) ----------------
+  const buildRecognition = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
 
-  const handleAiMic = () => {
-    if (busy) return;
-    if (!recipe) {
-      speak("Recipe is not loaded yet.");
-      return;
-    }
+    const r = new SR();
+    r.lang = "en-US";
+    r.interimResults = true;
+    r.continuous = true;
+    r.maxAlternatives = 1;
 
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
+    r.onresult = async (event) => {
+      const last = event.results[event.results.length - 1];
+      if (!last?.isFinal) return;
 
-    if (!SpeechRecognition) {
-      alert("Speech recognition not supported in this browser!");
-      return;
-    }
+      const transcript = (last[0]?.transcript || "").trim();
+      if (!transcript) return;
 
-    // stop old session if any
-    stopRecognition();
-
-    const recognition = new SpeechRecognition();
-    recognitionRef.current = recognition;
-
-    recognition.lang = "en-US";
-    recognition.interimResults = false;
-    recognition.continuous = false;
-    recognition.maxAlternatives = 1;
-
-    setListening(true);
-
-    try {
-      recognition.start();
-    } catch (e) {
-      console.error("recognition.start failed:", e);
+      // Stop listening after a final question
+      isListeningRef.current = false;
       setListening(false);
-      speak("Mic start failed. Try again.");
-      return;
-    }
+      try {
+        r.stop();
+      } catch {}
 
-    recognition.onresult = async (event) => {
-      const transcript = (event?.results?.[0]?.[0]?.transcript || "").trim();
-      stopRecognition();
+      // ✅ if user says stop words even here, stop speaking + re-listen
+      const low = transcript.toLowerCase();
+      if (STOP_WORDS.some((w) => low.includes(w))) {
+        stopSpeaking();
+        // go back to listening
+        isListeningRef.current = true;
+        setListening(true);
+        setTimeout(() => startRecognitionSafe(), 250);
+        return;
+      }
 
-      if (!transcript) {
-        speak("I didn’t hear anything. Try again.");
+      if (!recipe) {
+        speak("Recipe is not loaded yet.");
         return;
       }
 
@@ -110,12 +110,18 @@ ${recipe?.steps || recipe?.instructions || ""}
           }),
         });
 
-        const data = await res.json().catch(() => ({}));
-
+        const text = await res.text().catch(() => "");
         if (!res.ok) {
-          console.error("AI error:", res.status, data);
+          console.error("AI error:", res.status, text);
           speak("AI isn’t reachable right now.");
           return;
+        }
+
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { reply: text };
         }
 
         speak(data.reply || "I didn’t get a reply.");
@@ -127,31 +133,192 @@ ${recipe?.steps || recipe?.instructions || ""}
       }
     };
 
-    recognition.onerror = (event) => {
-      console.error("Mic error:", event?.error);
-      stopRecognition();
+    r.onerror = (event) => {
+      console.error("Mic error:", event.error);
 
-      if (event?.error === "no-speech") {
-        speak("I didn't hear you. Try again.");
+      if (event.error === "no-speech") {
+        // don’t panic-stop; let onend restart if user wants listening
         return;
       }
-      if (event?.error === "not-allowed" || event?.error === "service-not-allowed") {
+      if (event.error === "aborted") return;
+
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
         speak("Mic permission is blocked. Allow it in site settings.");
-        return;
-      }
-      if (event?.error === "audio-capture") {
-        speak("No microphone input detected.");
+        isListeningRef.current = false;
+        setListening(false);
         return;
       }
 
+      if (event.error === "audio-capture") {
+        speak("No microphone input detected.");
+        isListeningRef.current = false;
+        setListening(false);
+        return;
+      }
+
+      isListeningRef.current = false;
+      setListening(false);
       speak("Mic error. Try again.");
     };
 
-    recognition.onend = () => {
-      // if it ends normally with no result, onerror/no-speech usually covers it
-      setListening(false);
-      stopRecognition();
+    r.onend = () => {
+      // Chrome ends randomly; restart only if user still wants mic and not speaking
+      if (isListeningRef.current && !isSpeakingRef.current) {
+        setTimeout(() => startRecognitionSafe(), 250);
+      }
     };
+
+    return r;
+  };
+
+  const startRecognitionSafe = () => {
+    if (busy) return;
+    if (isSpeakingRef.current) return;
+
+    if (!recognitionRef.current) recognitionRef.current = buildRecognition();
+
+    const r = recognitionRef.current;
+    if (!r) {
+      alert("Speech recognition not supported in this browser!");
+      isListeningRef.current = false;
+      setListening(false);
+      return;
+    }
+
+    try {
+      r.start();
+    } catch {
+      // InvalidStateError spam -> ignore
+    }
+  };
+
+  const stopRecognitionSafe = () => {
+    isListeningRef.current = false;
+    setListening(false);
+    try {
+      recognitionRef.current?.stop?.();
+    } catch {}
+  };
+
+  const handleAiMic = () => {
+    if (busy) return;
+
+    // If speaking -> this click becomes "stop"
+    if (isSpeakingRef.current) {
+      stopSpeaking();
+      // go back to listening after stopping
+      isListeningRef.current = true;
+      setListening(true);
+      setTimeout(() => startRecognitionSafe(), 250);
+      return;
+    }
+
+    // If listening -> stop listening
+    if (listening) {
+      stopRecognitionSafe();
+      return;
+    }
+
+    if (!recipe) {
+      speak("Recipe is not loaded yet.");
+      return;
+    }
+
+    isListeningRef.current = true;
+    setListening(true);
+    startRecognitionSafe();
+  };
+
+  // ---------------- INTERRUPT LISTENER (WHILE SPEAKING) ----------------
+  const startInterruptListener = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    if (interruptRecRef.current) return;
+
+    const r = new SR();
+    r.lang = "en-US";
+    r.interimResults = true;
+    r.continuous = true;
+
+    r.onresult = (e) => {
+      const last = e.results[e.results.length - 1];
+      const text = (last?.[0]?.transcript || "").toLowerCase().trim();
+
+      if (STOP_WORDS.some((w) => text.includes(w))) {
+        stopSpeaking();
+        // after stopping, go back to main listening immediately
+        isListeningRef.current = true;
+        setListening(true);
+        setTimeout(() => startRecognitionSafe(), 250);
+      }
+    };
+
+    r.onerror = () => {
+      try {
+        r.stop();
+      } catch {}
+      interruptRecRef.current = null;
+    };
+
+    r.onend = () => {
+      interruptRecRef.current = null;
+    };
+
+    interruptRecRef.current = r;
+
+    try {
+      r.start();
+    } catch {}
+  };
+
+  // ---------------- TTS ----------------
+  const speak = (text) => {
+    if (!window.speechSynthesis || !text) return;
+
+    // stop any speech already playing
+    stopSpeaking();
+
+    // stop main mic while speaking (avoids feedback)
+    try {
+      recognitionRef.current?.stop?.();
+    } catch {}
+
+    window.speechSynthesis.cancel();
+
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1;
+    u.pitch = 1;
+
+    u.onstart = () => {
+      isSpeakingRef.current = true;
+      // ✅ listen for "shut up" while speaking
+      startInterruptListener();
+    };
+
+    u.onend = () => {
+      isSpeakingRef.current = false;
+
+      // stop interrupt listener
+      try {
+        interruptRecRef.current?.stop?.();
+      } catch {}
+      interruptRecRef.current = null;
+
+      // ✅ after speaking ends, continue listening if user wants
+      if (isListeningRef.current) {
+        setTimeout(() => startRecognitionSafe(), 250);
+      }
+    };
+
+    u.onerror = () => {
+      isSpeakingRef.current = false;
+      try {
+        interruptRecRef.current?.stop?.();
+      } catch {}
+      interruptRecRef.current = null;
+    };
+
+    window.speechSynthesis.speak(u);
   };
 
   // --------- track history & views ----------
@@ -195,9 +362,9 @@ ${recipe?.steps || recipe?.instructions || ""}
   // cleanup
   useEffect(() => {
     return () => {
-      stopRecognition();
+      stopSpeaking();
       try {
-        window.speechSynthesis?.cancel?.();
+        recognitionRef.current?.stop?.();
       } catch {}
     };
   }, []);
@@ -222,7 +389,7 @@ ${recipe?.steps || recipe?.instructions || ""}
           </button>
 
           <div style={{ opacity: 0.7, fontWeight: 600 }}>
-            Ask AI “what’s next?” / “how long to cook?”
+            Say “shut up” / “stop” to interrupt AI
           </div>
         </div>
 
@@ -247,14 +414,24 @@ ${recipe?.steps || recipe?.instructions || ""}
 
         <section className="recipe-section">
           <h2>Instructions</h2>
-          <div className="instructions-box">{recipe.steps || recipe.instructions}</div>
+          <div className="instructions-box">
+            {recipe.steps || recipe.instructions}
+          </div>
         </section>
       </div>
 
       <button
         className="ai-mic-float"
         onClick={handleAiMic}
-        title={busy ? "Working…" : listening ? "Listening…" : "Ask AI"}
+        title={
+          busy
+            ? "Working…"
+            : isSpeakingRef.current
+            ? "Speaking… click to stop"
+            : listening
+            ? "Listening… click to stop"
+            : "Ask AI"
+        }
         style={{ opacity: busy ? 0.6 : 1 }}
       >
         <FaMicrophone size={22} />
